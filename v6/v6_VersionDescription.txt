@@ -1,0 +1,35 @@
+核心更改1：根据自信程度动态调温度
+predict中的 sample_next 函数
+原版是直接使用temperature，新版是根据temperature构建一个temp出来作为新的温度：
+增加计算熵的函数，然后依据经验值（可调参）划定区间，判断此时temp要在temperature的基础上乘上几
+
+核心修改2：扩充主题字典：
+TOPIC_LIST = [
+    "landscape",           # 山水田园
+    "frontier",            # 边塞征戍
+    "homesickness",        # 思乡怀人
+    "historical",          # 咏史怀古
+    "love",                # 爱情婚姻
+    "objects",             # 咏物言志
+    "farewell",            # 送别酬唱
+    "time_sorrow",         # 感时伤逝
+    "festival",            # 节序风物
+    "palace_grievance",    # 宫怨闺怨
+    "immortal",            # 游仙求道
+    "zen",                 # 禅理玄思
+    "drinking",            # 饮酒狂放
+    "elegy",               # 悼亡哭逝
+    "imperial_exam",       # 科举入仕
+    "war_atrocity",        # 战乱纪实
+    "feminine_life",       # 女性生活
+    "reclusion_tourism",   # 隐逸游赏
+    "other",               # 其他（未分类或综合类）
+]
+每类主题50-70个字
+
+注：1. 核心更改1 主要改predict；核心更改2 主要改prepare_data函数里面topic list部分和predict函数里面自动分类部分
+    2. 引入大量类别后模型自动识别主题的能力大大增强，可以不说明主题运行效果也很好（当然也可以说明主题）
+    3. 新的完整的命令行指令为：python predict.py --genre 7 --topic landscape --prompt 春 --stop_newline --temperature 0.9其中--topic和--temperature为可选参数
+       可以不指定，更改1使得预测过程中真正的温度不是我们输入的温度，而是基于这个温度算出的一个其他值，不过调节输入温度大小依然可以宏观影响，建议在0.3~1.1内调控，最佳状
+       态经我测试大致在0.5~0.9之间
+    4. predict中可以关闭更改1自动调节温度，只需将use_adaptive=True改成False
