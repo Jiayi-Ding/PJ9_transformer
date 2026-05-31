@@ -246,6 +246,37 @@ def normalize_poem_text(text: str) -> str:
     return text
 
 
+def is_valid_poem(text: str) -> bool:
+    """
+    判断一首诗是否有效（无缺字、无全缺字行、长度合理）
+    """
+    if not text or len(text.strip()) == 0:
+        return False
+
+    # 1. 包含方框缺字标记 → 无效
+    if '□' in text:
+        return False
+
+    lines = text.split('\n')
+    total_chinese = 0
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # 统计该行中的中文字符数
+        chinese_count = len(re.findall(r'[\u4e00-\u9fff]', line))
+        total_chinese += chinese_count
+        # 2. 该行无中文字符 → 无效（全缺字行或纯标点行）
+        if chinese_count == 0:
+            return False
+
+    # 3. 整首诗的中文字符过少 → 无效
+    if total_chinese < 10:
+        return False
+
+    return True
+
+
 def split_poem_lines(text: str) -> list[str]:
     if not text:
         return []
@@ -321,6 +352,7 @@ def main():
     print(f"目标每类样本数: {targets}")
 
     added = True
+    filtered_count = 0  # 新增：记录过滤掉的诗歌数量
     for pass_i in range(MAX_PASS):
         if all(len(poems_by_genre[g]) >= targets[g] for g in GENRES):
             break
@@ -340,6 +372,10 @@ def main():
             text = normalize_poem_text(text)
             if not text or text in seen_texts:
                 continue
+            # 新增：清洗无效诗歌
+            if not is_valid_poem(text):
+                filtered_count += 1
+                continue
             seen_texts.add(text)
             genre = classify_poem(text)
             if len(poems_by_genre[genre]) < targets[genre]:
@@ -348,6 +384,8 @@ def main():
                 added = True
             if all(len(poems_by_genre[g]) >= targets[g] for g in GENRES):
                 break
+
+    print(f"过滤掉的无效诗歌数: {filtered_count}")
 
     all_text = "\n\n".join(all_texts)
     with open("poetry.txt", "w", encoding="utf-8") as f:
