@@ -1,0 +1,73 @@
+Version 5 版本说明
+
+
+一、v5版本基于v2（原v3）修改，v2 模型只会模仿字与字的局部搭配，写出来的诗风格飘忽不定。v5 给每首诗提前打上“边塞/山水/离别”的主题标签，让模型在学习时就知道“这首诗是什么风格”。推理时用户可以手动指定主题，也可以让程序根据起笔字自动判断。这样同一个起笔字（比如“春”），在山水主题下写出“春风花草香”，在边塞主题下写出“春风吹不度玉门关”，风格统一不串味。
+
+
+
+二、五份代码修改技术细节（相比v2）
+========================================
+dataset.py 改动说明（v5 vs v2）
+========================================
+1. 新增 topics_path 和 boundaries_path 参数，支持加载主题标签和诗边界文件
+2. 新增 token_to_topic 数组，为序列中每个位置标记所属诗的主题 id
+3. 返回值从 (x, y) 改为 (x, y, topic_id)，供模型学习主题条件概率
+4. 删除了窗口必须完全落在单首诗内的限制，允许跨诗采样（解决 block_size 受限问题）
+========================================
+
+========================================
+model.py 改动说明（v5 vs v2）
+========================================
+1. CharGPT.__init__ 新增 num_topics 参数，决定是否启用主题 embedding
+2. 新增 self.topic_emb 层（Embedding），将主题 id 映射为向量
+3. forward 函数新增 topic_ids 参数，将主题 embedding 加到 token_emb + pos_emb 上
+4. checkpoint 保存时增加 num_topics 字段，确保加载时模型结构匹配
+========================================
+
+========================================
+prepare_data.py 改动说明（v5 vs v2）
+========================================
+1. 新增 TOPIC_KEYWORDS 主题关键词库和 classify_topic() 函数，为每首诗打主题标签
+2. 生成 train_data_{genre}.pt 时同时保存 boundaries_{train/val}_{genre}.pt（诗边界文件）
+3. 新增 topic_vocab.json，保存主题列表和关键词，供训练和推理时使用
+4. 保存 topics_train_{genre}.pt / topics_val_{genre}.pt，记录每首诗的主题 id
+========================================
+
+========================================
+train.py 改动说明（v5 vs v2）
+========================================
+1. 新增 --use_topic 参数，控制是否启用主题 embedding 训练
+2. 新增 --topic_vocab 参数，指定主题词表路径
+3. 创建 Dataset 时传入 topics_path 和 boundaries_path，启用主题标签加载
+4. 训练循环中将 topic_ids 传给 model.forward()，collate_fn 处理三元组 (x, y, topic_id)
+========================================
+
+========================================
+predict.py 改动说明（v5 vs v2）
+========================================
+1. 新增 --topic 参数，支持手动指定主题（frontier/landscape/farewell/other）
+2. 新增 auto_select_topic() 函数，根据起笔字第一个字符自动匹配主题（基于 topic_keywords）
+3. 用户未指定 --topic 时，自动调用 auto_select_topic() 选择主题并打印提示
+4. sample_next() 和 generate_one() 增加 topic_id 参数，生成时全程固定主题
+========================================
+
+
+
+三、命令行运行示例
+# 手动指定主题（山水）
+python predict.py --genre 5 --topic landscape --prompt 春
+
+# 手动指定主题（边塞）
+python predict.py --genre 5 --topic frontier --prompt 月
+
+# 自动识别主题（不加 --topic，程序根据起笔字判断）
+python predict.py --genre 5 --prompt 沙
+
+# 七言体裁 + 离别主题 + 遇到换行符停止
+python predict.py --genre 7 --topic farewell --prompt 秋 --stop_newline
+
+
+
+四、两种模式介绍
+手动指定模式：用户通过 --topic 参数明确告诉模型用哪个主题（如 --topic landscape）。模型全程使用该主题 embedding，生成风格统一的诗。
+自动识别模式：用户不加 --topic 参数。程序提取起笔字的第一个字符，在 topic_keywords 字典中查找该字属于哪个主题。如果找到（如“沙”在边塞关键词中），就用该主题；如果找不到（如“的”），则随机选一个主题（排除 other），并打印告知用户。全程固定使用选定的主题，保证风格不自相矛盾。
