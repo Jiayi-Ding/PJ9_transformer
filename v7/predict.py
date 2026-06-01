@@ -6,6 +6,7 @@
     python predict_v4.py --genre 5 --topic landscape --prompt 春
     python predict_v4.py --genre 7 --topic frontier --prompt 月 --max_new 100
 """
+"""【修改 predict.py 中 load_for_generate 函数以解决 torch.compile 导致的 state_dict 键名前缀问题】"""
 
 import argparse
 import os
@@ -129,7 +130,7 @@ def generate_one(
     out_ids: List[int] = idx[0].tolist()
     
     for _ in range(max_new):
-        nxt = sample_next(model, torch.tensor([out_ids], device=device, dtype=torch.long), topic_id, temperature, device,use_adaptive=True, base_temp=temperature)
+        nxt = sample_next(model, torch.tensor([out_ids], device=device, dtype=torch.long), topic_id, temperature, device, use_adaptive=True, base_temp=temperature)
         out_ids.append(nxt)
         if stop_newline and newline_id is not None and nxt == newline_id:
             break
@@ -150,7 +151,16 @@ def load_for_generate(ckpt_path: str, device: torch.device) -> Tuple[CharGPT, di
         dropout=float(hp.get("dropout", 0.1)),
         num_topics=hp.get("num_topics", 0),
     ).to(device)
-    m.load_state_dict(sd, strict=True)
+    
+    # 处理 torch.compile 产生的 _orig_mod. 前缀
+    new_sd = {}
+    for k, v in sd.items():
+        if k.startswith('_orig_mod.'):
+            new_sd[k[10:]] = v
+        else:
+            new_sd[k] = v
+    
+    m.load_state_dict(new_sd, strict=True)
     m.eval()
     return m, hp
 
@@ -234,7 +244,6 @@ def main():
     model, hp = load_for_generate(args.ckpt, device)
 
     # 获取主题 id
-    # 在 predict.py 的 main() 中，获取 topic_id 的部分修改为：
     topic_id = None
     if model.topic_emb is not None:
         try:
