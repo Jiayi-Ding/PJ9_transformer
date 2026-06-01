@@ -297,8 +297,8 @@ def main() -> None:
         except Exception as e:
             print(f"torch.compile 编译失败，跳过: {e}", file=sys.stderr)
 
-    # 优化1：混合精度训练（AMP）
-    scaler = torch.cuda.amp.GradScaler() if device.type == 'cuda' else None
+    # 优化1：混合精度训练（AMP）—— 使用新 API 避免 FutureWarning
+    scaler = torch.amp.GradScaler('cuda') if device.type == 'cuda' else None
 
     # 优化5：AdamW 融合版本 (fused=True)
     opt = torch.optim.AdamW(
