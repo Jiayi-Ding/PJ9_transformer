@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>v6 训练参数可视化建议</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --good: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --line: rgba(255,255,255,0.08);
+    }
+    body { margin: 0; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Microsoft YaHei",sans-serif; background: linear-gradient(180deg, #0b1020, #111827 55%, #0f172a); color: var(--text); }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 48px; }
+    h1 { margin: 0 0 8px; font-size: 30px; }
+    .sub { color: var(--muted); margin-bottom: 24px; line-height: 1.7; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(280px,1fr)); gap: 16px; }
+    .card { background: rgba(17,24,39,0.88); border: 1px solid var(--line); border-radius: 18px; padding: 18px 18px 14px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .title { display:flex; justify-content:space-between; align-items:center; gap: 10px; margin-bottom: 10px; }
+    .title h2 { margin: 0; font-size: 18px; }
+    .badge { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(56,189,248,.12); color: var(--accent); border: 1px solid rgba(56,189,248,.25); }
+    .bar { height: 12px; border-radius: 999px; background: rgba(255,255,255,.08); overflow:hidden; margin: 10px 0 8px; }
+    .fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #22c55e, #38bdf8); }
+    .meta { display:flex; justify-content:space-between; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+    ul { margin: 10px 0 0 18px; color: var(--text); line-height: 1.6; }
+    .section { margin-top: 28px; }
+    table { width:100%; border-collapse: collapse; margin-top: 12px; overflow:hidden; border-radius: 14px; }
+    th, td { text-align:left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: #cbd5e1; font-weight: 600; background: rgba(255,255,255,.03); }
+    td { color: var(--text); }
+    .small { color: var(--muted); font-size: 13px; line-height: 1.7; }
+    .note { margin-top: 18px; padding: 14px 16px; background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.25); border-radius: 14px; color: #fde68a; line-height: 1.7; }
+    .good { color: #86efac; }
+    .warn { color: #fde68a; }
+    .danger { color: #fca5a5; }
+    .footer { margin-top: 18px; color: var(--muted); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>v6 训练参数建议可视化</h1>
+    <div class="sub">
+      目标：优先保证训练稳定、可收敛、不过拟合，再逐步提升模型容量。以下建议是基于 v6 的自适应温度与多主题版本特征整理的训练侧调参参考。
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="title"><h2>学习率 learning_rate</h2><span class="badge">最高优先级</span></div>
+        <div class="meta"><span>推荐起点</span><span>3e-4</span></div>
+        <div class="bar"><div class="fill" style="width:78%"></div></div>
+        <div class="small">常用范围：<span class="good">1e-4 ~ 1e-3</span></div>
+        <ul>
+          <li>过大：loss 波动，训练不稳定。</li>
+          <li>过小：收敛慢，模型学得保守。</li>
+          <li>优先观察验证集 loss 的趋势。</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="title"><h2>Batch size</h2><span class="badge">稳定性</span></div>
+        <div class="meta"><span>推荐起点</span><span>16 / 32</span></div>
+        <div class="bar"><div class="fill" style="width:62%"></div></div>
+        <div class="small">常用范围：<span class="good">16 ~ 64</span></div>
+        <ul>
+          <li>越大越稳，但更吃显存。</li>
+          <li>越小噪声越大，可能更不稳。</li>
+          <li>显存允许时优先尝试 32。</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="title"><h2>Epochs</h2><span class="badge">收敛程度</span></div>
+        <div class="meta"><span>建议</span><span>看验证集早停</span></div>
+        <div class="bar"><div class="fill" style="width:55%"></div></div>
+        <div class="small">不是固定越多越好，建议配合验证集监控。</div>
+        <ul>
+          <li>验证 loss 持续下降：继续训。</li>
+          <li>验证 loss 上升：可能过拟合。</li>
+          <li>可考虑保存最优 checkpoint。</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="title"><h2>Dropout</h2><span class="badge">防过拟合</span></div>
+        <div class="meta"><span>推荐起点</span><span>0.1 ~ 0.2</span></div>
+        <div class="bar"><div class="fill" style="width:40%"></div></div>
+        <div class="small">常用范围：<span class="good">0.1 ~ 0.3</span></div>
+        <ul>
+          <li>过低：容易记住训练集。</li>
+          <li>过高：模型学不充分，输出发虚。</li>
+          <li>数据量偏小时通常更需要 dropout。</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="title"><h2>block_size</h2><span class="badge">上下文长度</span></div>
+        <div class="meta"><span>推荐起点</span><span>128</span></div>
+        <div class="bar"><div class="fill" style="width:70%"></div></div>
+        <div class="small">常用范围：<span class="good">64 / 128 / 256</span></div>
+        <ul>
+          <li>更大：上下文更完整，但更慢更吃显存。</li>
+          <li>更小：训练快，但可能只会局部搭配。</li>
+          <li>古诗任务通常 128 是较稳的起点。</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="title"><h2>d_model</h2><span class="badge">模型宽度</span></div>
+        <div class="meta"><span>推荐起点</span><span>256</span></div>
+        <div class="bar"><div class="fill" style="width:66%"></div></div>
+        <div class="small">常用范围：<span class="good">256 ~ 512</span></div>
+        <ul>
+          <li>越大，表达能力越强。</li>
+          <li>也会带来更高训练成本。</li>
+          <li>资源有限时先用 256。</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="title"><h2>n_head</h2><span class="badge">注意力头</span></div>
+        <div class="meta"><span>推荐起点</span><span>4 / 8</span></div>
+        <div class="bar"><div class="fill" style="width:48%"></div></div>
+        <div class="small">常用范围：<span class="good">4 ~ 8</span></div>
+        <ul>
+          <li>头数增加能看到不同层面的关联。</li>
+          <li>与 d_model 一起配合设置更合理。</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="title"><h2>n_layer</h2><span class="badge">模型深度</span></div>
+        <div class="meta"><span>推荐起点</span><span>4 / 6</span></div>
+        <div class="bar"><div class="fill" style="width:58%"></div></div>
+        <div class="small">常用范围：<span class="good">4 ~ 8</span></div>
+        <ul>
+          <li>层数越多，建模能力更强。</li>
+          <li>但训练难度、过拟合风险也会上升。</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section card">
+      <div class="title"><h2>推荐组合方案</h2><span class="badge">可直接试</span></div>
+      <table>
+        <thead>
+          <tr>
+            <th>方案</th>
+            <th>参数组合</th>
+            <th>适用场景</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>稳妥版</td>
+            <td>lr=3e-4, batch=16/32, epoch=20~40, dropout=0.1, d_model=256, n_head=4, n_layer=4, block_size=128</td>
+            <td>先跑通、看是否稳定收敛</td>
+          </tr>
+          <tr>
+            <td>增强版</td>
+            <td>lr=1e-4~3e-4, batch=32, epoch=30~60, dropout=0.1~0.2, d_model=512, n_head=8, n_layer=6, block_size=256</td>
+            <td>显存和训练时间更充足时</td>
+          </tr>
+          <tr>
+            <td>轻量版</td>
+            <td>lr=5e-4, batch=16, epoch=15~30, dropout=0.2, d_model=128/256, n_head=4, n_layer=4, block_size=64/128</td>
+            <td>资源有限、先快速试错</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <strong>调参顺序建议：</strong>先调 <span class="warn">learning_rate</span>，再调 <span class="warn">batch_size</span> 和 <span class="warn">dropout</span>，然后看 <span class="warn">block_size</span>，最后再考虑扩大 <span class="warn">d_model / n_head / n_layer</span>。<br/>
+      如果训练集很好但验证集差，优先降低模型容量或提高 dropout；如果 loss 一直降不下来，优先检查学习率是否过小。
+    </div>
+
+    <div class="footer">
+      文件位置：D:\360Downloads\parameter\v6_parameter_visualization.html
+    </div>
+  </div>
+</body>
+</html>
