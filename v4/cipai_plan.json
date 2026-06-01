@@ -1,0 +1,494 @@
+{
+  "total_poems": 21053,
+  "unique_cipai": 1421,
+  "solo_threshold": 350,
+  "merge_min": 50,
+  "solo": [
+    {
+      "cipai": "浣溪沙",
+      "count": 776,
+      "poetry_name": "huanxisha",
+      "tier": "solo"
+    },
+    {
+      "cipai": "水调歌头",
+      "count": 743,
+      "poetry_name": "shuidiaogetou",
+      "tier": "solo"
+    },
+    {
+      "cipai": "鹧鸪天",
+      "count": 657,
+      "poetry_name": "zhegutian",
+      "tier": "solo"
+    },
+    {
+      "cipai": "菩萨蛮",
+      "count": 598,
+      "poetry_name": "pusaman",
+      "tier": "solo"
+    },
+    {
+      "cipai": "满江红",
+      "count": 549,
+      "poetry_name": "manjianghong",
+      "tier": "solo"
+    },
+    {
+      "cipai": "西江月",
+      "count": 490,
+      "poetry_name": "xijiangyue",
+      "tier": "solo"
+    },
+    {
+      "cipai": "临江仙",
+      "count": 482,
+      "poetry_name": "linjiangxian",
+      "tier": "solo"
+    },
+    {
+      "cipai": "念奴娇",
+      "count": 432,
+      "poetry_name": "niannujiao",
+      "tier": "solo"
+    },
+    {
+      "cipai": "减字木兰花",
+      "count": 425,
+      "poetry_name": "jianzimulanhua",
+      "tier": "solo"
+    },
+    {
+      "cipai": "沁园春",
+      "count": 423,
+      "poetry_name": "qinyuanchun",
+      "tier": "solo"
+    },
+    {
+      "cipai": "蝶恋花",
+      "count": 416,
+      "poetry_name": "dielianhua",
+      "tier": "solo"
+    },
+    {
+      "cipai": "点绛唇",
+      "count": 390,
+      "poetry_name": "dianjiangchun",
+      "tier": "solo"
+    },
+    {
+      "cipai": "失调名",
+      "count": 372,
+      "poetry_name": "cipai_38608",
+      "tier": "solo"
+    },
+    {
+      "cipai": "贺新郎",
+      "count": 361,
+      "poetry_name": "hexinlang",
+      "tier": "solo"
+    },
+    {
+      "cipai": "清平乐",
+      "count": 356,
+      "poetry_name": "qingpingle",
+      "tier": "solo"
+    }
+  ],
+  "merge_groups": [
+    {
+      "poetry_name": "merge_long",
+      "label": "小样本合并组(long)",
+      "bucket": "long",
+      "cipai_list": [
+        "满庭芳",
+        "虞美人",
+        "好事近",
+        "水龙吟",
+        "朝中措",
+        "卜算子",
+        "玉楼春",
+        "南乡子",
+        "踏莎行",
+        "南歌子",
+        "柳梢青",
+        "蓦山溪",
+        "望江南・忆江南",
+        "生查子",
+        "鹊桥仙",
+        "木兰花慢",
+        "洞仙歌",
+        "诉衷情",
+        "青玉案",
+        "醉落魄・一斛珠",
+        "摸鱼儿",
+        "瑞鹤仙",
+        "江城子",
+        "感皇恩",
+        "小重山",
+        "八声甘州",
+        "采桑子",
+        "醉蓬莱",
+        "酹江月・念奴娇",
+        "导引",
+        "霜天晓角",
+        "喜迁莺",
+        "齐天乐",
+        "木兰花・玉楼春",
+        "眼儿媚",
+        "少年游",
+        "汉宫春",
+        "永遇乐",
+        "江神子・江城子",
+        "千秋岁",
+        "声声慢",
+        "祝英台近",
+        "风入松",
+        "瑞鹧鸪",
+        "行香子",
+        "丑奴儿・采桑子",
+        "乌夜啼",
+        "南柯子・南歌子"
+      ],
+      "count": 6614,
+      "tier": "merge"
+    },
+    {
+      "poetry_name": "merge_medium",
+      "label": "小样本合并组(medium)",
+      "bucket": "medium",
+      "cipai_list": [
+        "渔家傲",
+        "谒金门",
+        "如梦令",
+        "阮郎归",
+        "长相思",
+        "忆秦娥",
+        "更漏子",
+        "桃源忆故人"
+      ],
+      "count": 1097,
+      "tier": "merge"
+    },
+    {
+      "poetry_name": "merge_mixed",
+      "label": "小样本合并组(mixed)",
+      "bucket": "mixed",
+      "cipai_list": [
+        "浪淘沙",
+        "定风波",
+        "渔父词・渔父"
+      ],
+      "count": 319,
+      "tier": "merge"
+    }
+  ],
+  "skip_count": 1347,
+  "skip": [
+    {
+      "cipai": "凤栖梧・蝶恋花",
+      "count": 49,
+      "poetry_name": "cipai_43894",
+      "tier": "skip"
+    },
+    {
+      "cipai": "一翦梅",
+      "count": 49,
+      "poetry_name": "cipai_20726",
+      "tier": "skip"
+    },
+    {
+      "cipai": "风流子",
+      "count": 48,
+      "poetry_name": "cipai_12151",
+      "tier": "skip"
+    },
+    {
+      "cipai": "烛影摇红",
+      "count": 47,
+      "poetry_name": "cipai_11129",
+      "tier": "skip"
+    },
+    {
+      "cipai": "武陵春",
+      "count": 45,
+      "poetry_name": "cipai_14029",
+      "tier": "skip"
+    },
+    {
+      "cipai": "最高楼",
+      "count": 44,
+      "poetry_name": "cipai_98621",
+      "tier": "skip"
+    },
+    {
+      "cipai": "夜行船",
+      "count": 43,
+      "poetry_name": "cipai_50168",
+      "tier": "skip"
+    },
+    {
+      "cipai": "杏花天",
+      "count": 43,
+      "poetry_name": "cipai_13696",
+      "tier": "skip"
+    },
+    {
+      "cipai": "调笑・调笑令",
+      "count": 43,
+      "poetry_name": "cipai_81764",
+      "tier": "skip"
+    },
+    {
+      "cipai": "一落索",
+      "count": 40,
+      "poetry_name": "cipai_90766",
+      "tier": "skip"
+    },
+    {
+      "cipai": "秦楼月・忆秦娥",
+      "count": 40,
+      "poetry_name": "cipai_79402",
+      "tier": "skip"
+    },
+    {
+      "cipai": "望海潮",
+      "count": 38,
+      "poetry_name": "cipai_90156",
+      "tier": "skip"
+    },
+    {
+      "cipai": "醉桃源・阮郎归",
+      "count": 37,
+      "poetry_name": "cipai_57768",
+      "tier": "skip"
+    },
+    {
+      "cipai": "画堂春",
+      "count": 35,
+      "poetry_name": "cipai_47226",
+      "tier": "skip"
+    },
+    {
+      "cipai": "醉花阴",
+      "count": 34,
+      "poetry_name": "zuihuayin",
+      "tier": "skip"
+    },
+    {
+      "cipai": "兰陵王",
+      "count": 33,
+      "poetry_name": "cipai_94137",
+      "tier": "skip"
+    },
+    {
+      "cipai": "恋绣衾",
+      "count": 33,
+      "poetry_name": "cipai_65107",
+      "tier": "skip"
+    },
+    {
+      "cipai": "思佳客",
+      "count": 33,
+      "poetry_name": "cipai_07902",
+      "tier": "skip"
+    },
+    {
+      "cipai": "品令",
+      "count": 32,
+      "poetry_name": "cipai_87999",
+      "tier": "skip"
+    },
+    {
+      "cipai": "花心动",
+      "count": 32,
+      "poetry_name": "cipai_94062",
+      "tier": "skip"
+    },
+    {
+      "cipai": "昭君怨",
+      "count": 32,
+      "poetry_name": "cipai_19500",
+      "tier": "skip"
+    },
+    {
+      "cipai": "壶中天・念奴娇",
+      "count": 32,
+      "poetry_name": "cipai_46958",
+      "tier": "skip"
+    },
+    {
+      "cipai": "雨中花・夜行船",
+      "count": 31,
+      "poetry_name": "cipai_64004",
+      "tier": "skip"
+    },
+    {
+      "cipai": "十二时・忆少年",
+      "count": 30,
+      "poetry_name": "cipai_91784",
+      "tier": "skip"
+    },
+    {
+      "cipai": "忆王孙",
+      "count": 30,
+      "poetry_name": "cipai_13455",
+      "tier": "skip"
+    },
+    {
+      "cipai": "金缕曲・贺新郎",
+      "count": 30,
+      "poetry_name": "cipai_38422",
+      "tier": "skip"
+    },
+    {
+      "cipai": "苏幕遮",
+      "count": 29,
+      "poetry_name": "cipai_03583",
+      "tier": "skip"
+    },
+    {
+      "cipai": "御街行",
+      "count": 29,
+      "poetry_name": "cipai_99284",
+      "tier": "skip"
+    },
+    {
+      "cipai": "天仙子",
+      "count": 29,
+      "poetry_name": "cipai_09403",
+      "tier": "skip"
+    },
+    {
+      "cipai": "桂枝香",
+      "count": 29,
+      "poetry_name": "cipai_76850",
+      "tier": "skip"
+    },
+    {
+      "cipai": "惜奴娇",
+      "count": 28,
+      "poetry_name": "cipai_46084",
+      "tier": "skip"
+    },
+    {
+      "cipai": "六州",
+      "count": 26,
+      "poetry_name": "cipai_76405",
+      "tier": "skip"
+    },
+    {
+      "cipai": "燕归梁",
+      "count": 26,
+      "poetry_name": "cipai_24225",
+      "tier": "skip"
+    },
+    {
+      "cipai": "六州歌头",
+      "count": 26,
+      "poetry_name": "cipai_18124",
+      "tier": "skip"
+    },
+    {
+      "cipai": "高阳台",
+      "count": 26,
+      "poetry_name": "cipai_08179",
+      "tier": "skip"
+    },
+    {
+      "cipai": "捣练子",
+      "count": 26,
+      "poetry_name": "cipai_91150",
+      "tier": "skip"
+    },
+    {
+      "cipai": "夜游宫",
+      "count": 26,
+      "poetry_name": "cipai_89969",
+      "tier": "skip"
+    },
+    {
+      "cipai": "解连环",
+      "count": 26,
+      "poetry_name": "cipai_15167",
+      "tier": "skip"
+    },
+    {
+      "cipai": "贺新凉・贺新郎",
+      "count": 26,
+      "poetry_name": "cipai_29104",
+      "tier": "skip"
+    },
+    {
+      "cipai": "玉蝴蝶",
+      "count": 24,
+      "poetry_name": "cipai_96597",
+      "tier": "skip"
+    },
+    {
+      "cipai": "万年欢",
+      "count": 24,
+      "poetry_name": "cipai_01754",
+      "tier": "skip"
+    },
+    {
+      "cipai": "惜分飞",
+      "count": 24,
+      "poetry_name": "cipai_17158",
+      "tier": "skip"
+    },
+    {
+      "cipai": "忆旧游",
+      "count": 24,
+      "poetry_name": "cipai_42671",
+      "tier": "skip"
+    },
+    {
+      "cipai": "探春令",
+      "count": 23,
+      "poetry_name": "cipai_19496",
+      "tier": "skip"
+    },
+    {
+      "cipai": "酒泉子",
+      "count": 22,
+      "poetry_name": "cipai_35377",
+      "tier": "skip"
+    },
+    {
+      "cipai": "人娇",
+      "count": 22,
+      "poetry_name": "cipai_73190",
+      "tier": "skip"
+    },
+    {
+      "cipai": "应天长",
+      "count": 22,
+      "poetry_name": "cipai_96818",
+      "tier": "skip"
+    },
+    {
+      "cipai": "调笑令",
+      "count": 22,
+      "poetry_name": "cipai_44454",
+      "tier": "skip"
+    },
+    {
+      "cipai": "宴清都",
+      "count": 22,
+      "poetry_name": "cipai_83923",
+      "tier": "skip"
+    },
+    {
+      "cipai": "扫花游・扫地游",
+      "count": 21,
+      "poetry_name": "cipai_10249",
+      "tier": "skip"
+    }
+  ],
+  "notes": {
+    "solo": ">= 350 首：单独训练",
+    "merge": "50~349 首：按句长结构合并",
+    "skip": "< 50 首：跳过"
+  }
+}
