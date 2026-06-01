@@ -12,10 +12,24 @@
 5. 训练循环中将 topic_ids 传给 model.forward()
 6. 保存 checkpoint 时增加 num_topics 字段
 """
+
+"""
+【v7改动】
+1.训练提速(已实施)    
+   ① 混合精度训练（AMP）：使用 torch.autocast + GradScaler，在 CUDA 上自动使用 FP16 计算，显存减半，训练速度提升 1.5~2 倍。
+   ② DataLoader 多进程 + pin_memory：num_workers=4（GPU 时），pin_memory=True，消除数据加载 I/O 瓶颈，加速 20~40%。
+   ③ AdamW 融合版本：optimizer 设置 fused=True（仅 CUDA），加速参数更新 5~10%。
+   ④ 矩阵乘法精度优化：torch.set_float32_matmul_precision('high')，利用 Tensor Core 加速 FP32 矩阵乘，提速 10~20%。
+   ⑤ torch.compile 模型编译：使用 torch.compile 对模型进行优化，加速 10~30%（仅 PyTorch 2.0+ 且 CUDA 有效）。
+
+2.学习率(未实施)
+
+"""
 import argparse
 import os
 import random
 import sys
+from contextlib import nullcontext
 from typing import List, Optional
 
 import matplotlib.pyplot as plt
@@ -195,6 +209,10 @@ def main() -> None:
     device = get_device()
     print("设备:", device)
 
+    # 优化9：矩阵乘法精度优化（仅对 CUDA 生效）
+    if device.type == 'cuda':
+        torch.set_float32_matmul_precision('high')
+
     # 加载词表和主题信息
     _, __, vocab_size = load_vocab_json(args.vocab)
     
@@ -242,15 +260,19 @@ def main() -> None:
         )
         collate_fn = collate_fn_without_topic
 
+    # 优化2：DataLoader 多进程 + pin_memory
+    num_workers = 4 if device.type == 'cuda' else 0   # GPU 训练时用 4 进程，CPU 训练时用 0
+    pin_memory = True if device.type == 'cuda' else False
+
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True,
-        num_workers=DATALOADER_NUM_WORKERS, drop_last=DATALOADER_DROP_LAST,
-        collate_fn=collate_fn
+        num_workers=num_workers, pin_memory=pin_memory,
+        drop_last=DATALOADER_DROP_LAST, collate_fn=collate_fn
     )
     val_loader = DataLoader(
         val_ds, batch_size=args.batch_size, shuffle=False,
-        num_workers=DATALOADER_NUM_WORKERS, drop_last=DATALOADER_DROP_LAST,
-        collate_fn=collate_fn
+        num_workers=num_workers, pin_memory=pin_memory,
+        drop_last=DATALOADER_DROP_LAST, collate_fn=collate_fn
     )
 
     # 创建模型
@@ -265,7 +287,25 @@ def main() -> None:
         num_topics=num_topics if args.use_topic else 0,
     ).to(device)
 
-    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=WEIGHT_DECAY)
+    # 优化3：torch.compile 模型编译（PyTorch 2.0+，仅 CUDA 有效）
+    if hasattr(torch, 'compile') and device.type == 'cuda':
+        try:
+            print("正在使用 torch.compile 编译模型（首次编译耗时较长）...")
+            model = torch.compile(model, mode='reduce-overhead')
+            print("torch.compile 编译完成")
+        except Exception as e:
+            print(f"torch.compile 编译失败，跳过: {e}", file=sys.stderr)
+
+    # 优化1：混合精度训练（AMP）
+    scaler = torch.cuda.amp.GradScaler() if device.type == 'cuda' else None
+
+    # 优化5：AdamW 融合版本 (fused=True)
+    opt = torch.optim.AdamW(
+        model.parameters(),
+        lr=args.lr,
+        weight_decay=WEIGHT_DECAY,
+        fused=True if device.type == 'cuda' else False
+    )
     train_losses, val_losses = [], []
     best_val = float("inf")
 
@@ -282,18 +322,29 @@ def main() -> None:
                 x, y, topic_ids = batch
                 x, y, topic_ids = x.to(device), y.to(device), topic_ids.to(device)
                 opt.zero_grad()
-                _, loss = model(x, y, topic_ids=topic_ids)
+                # 使用 AMP 上下文
+                with torch.autocast(device_type=device.type, dtype=torch.float16) if scaler else nullcontext():
+                    _, loss = model(x, y, topic_ids=topic_ids)
             else:
                 x, y = batch[0], batch[1]
                 if len(batch) == 3:
                     x, y = x, y
                 x, y = x.to(device), y.to(device)
                 opt.zero_grad()
-                _, loss = model(x, y)
+                with torch.autocast(device_type=device.type, dtype=torch.float16) if scaler else nullcontext():
+                    _, loss = model(x, y)
             
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP_NORM)
-            opt.step()
+            # 反向传播与梯度更新（支持 AMP）
+            if scaler:
+                scaler.scale(loss).backward()
+                scaler.unscale_(opt)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP_NORM)
+                scaler.step(opt)
+                scaler.update()
+            else:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP_NORM)
+                opt.step()
             
             total_loss += loss.item() * x.size(0)
             total_cnt += x.size(0)
