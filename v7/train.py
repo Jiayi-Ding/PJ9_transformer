@@ -21,7 +21,8 @@
    ③ AdamW 融合版本：optimizer 设置 fused=True（仅 CUDA），加速参数更新 5~10%。
    ④ 矩阵乘法精度优化：torch.set_float32_matmul_precision('high')，利用 Tensor Core 加速 FP32 矩阵乘，提速 10~20%。
    ⑤ torch.compile 模型编译：使用 torch.compile 对模型进行优化，加速 10~30%（仅 PyTorch 2.0+ 且 CUDA 有效）。
-
+效果：以“!python train.py --genre 5 --use_topic --epochs 3 --batch_size 32 --train_num_samples 50000 --save /kaggle/working/ckpt_best_5.pt”为例，需要2-3分钟
+   
 2.学习率递减(相同训练轮次下提升训练效果)
    - 线性预热 + 余弦退火 (OneCycleLR)：前 10% 步数线性增加到 max_lr，后 90% 步数余弦衰减到 max_lr/100。
      该调度器可稳定训练初期，并帮助模型在后期精细收敛，在相同 epoch 下获得更低的验证损失。
