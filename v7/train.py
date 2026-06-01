@@ -15,15 +15,16 @@
 
 """
 【v7改动】
-1.训练提速(已实施)    
+1.训练提速(提升训练速度)    
    ① 混合精度训练（AMP）：使用 torch.autocast + GradScaler，在 CUDA 上自动使用 FP16 计算，显存减半，训练速度提升 1.5~2 倍。
    ② DataLoader 多进程 + pin_memory：num_workers=4（GPU 时），pin_memory=True，消除数据加载 I/O 瓶颈，加速 20~40%。
    ③ AdamW 融合版本：optimizer 设置 fused=True（仅 CUDA），加速参数更新 5~10%。
    ④ 矩阵乘法精度优化：torch.set_float32_matmul_precision('high')，利用 Tensor Core 加速 FP32 矩阵乘，提速 10~20%。
    ⑤ torch.compile 模型编译：使用 torch.compile 对模型进行优化，加速 10~30%（仅 PyTorch 2.0+ 且 CUDA 有效）。
 
-2.学习率(未实施)
-
+2.学习率递减(相同训练轮次下提升训练效果)
+   - 线性预热 + 余弦退火 (OneCycleLR)：前 10% 步数线性增加到 max_lr，后 90% 步数余弦衰减到 max_lr/100。
+     该调度器可稳定训练初期，并帮助模型在后期精细收敛，在相同 epoch 下获得更低的验证损失。
 """
 import argparse
 import os
@@ -306,6 +307,26 @@ def main() -> None:
         weight_decay=WEIGHT_DECAY,
         fused=True if device.type == 'cuda' else False
     )
+
+    # ========== 学习率调度：线性预热 + 余弦退火 (OneCycleLR) ==========
+    # 计算总训练步数（考虑 max_train_batches 截断）
+    if args.max_train_batches > 0:
+        steps_per_epoch = min(len(train_loader), args.max_train_batches)
+    else:
+        steps_per_epoch = len(train_loader)
+    total_steps = args.epochs * steps_per_epoch
+
+    # 使用 OneCycleLR 实现前 pct_start 比例步数线性预热，后余弦退火到 max_lr/100
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        opt,
+        max_lr=args.lr,
+        total_steps=total_steps,
+        pct_start=0.1,           # 前 10% 步数预热
+        anneal_strategy='cos',
+        final_div_factor=100.0    # 最终学习率为 max_lr / final_div_factor = 3e-6
+    )
+    # ================================================================
+
     train_losses, val_losses = [], []
     best_val = float("inf")
 
@@ -346,11 +367,15 @@ def main() -> None:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP_NORM)
                 opt.step()
             
+            # 更新学习率调度器（每个参数更新步后）
+            scheduler.step()
+            
             total_loss += loss.item() * x.size(0)
             total_cnt += x.size(0)
             
             if args.log_interval > 0 and (bi + 1) % args.log_interval == 0:
-                print(f"  epoch {ep} step {bi+1} loss {loss.item():.4f}")
+                current_lr = scheduler.get_last_lr()[0]
+                print(f"  epoch {ep} step {bi+1} loss {loss.item():.4f} lr={current_lr:.2e}")
         
         train_loss = total_loss / max(total_cnt, 1)
         val_loss = eval_loss(model, val_loader, device, args.val_batches, args.use_topic)
