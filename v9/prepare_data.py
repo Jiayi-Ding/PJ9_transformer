@@ -373,14 +373,15 @@ def load_cipai_from_local() -> dict:
                 # 数据可能是列表形式
                 if isinstance(data, list):
                     for item in data:
-                        rhythmic = item.get("rhythmic", "")
+                        rhythmic = item.get("rhythmic", "").strip()
+                        rhythmic = cc.convert(rhythmic)   # 繁转简
                         if rhythmic not in TARGET_CIPAI:
                             continue
                         paragraphs = item.get("paragraphs", [])
                         if not paragraphs:
                             continue
                         # 用换行符连接段落
-                        text = "\n".join(paragraphs)
+                        text = "".join(paragraphs)
                         text = normalize_poem_text(text)
                         if not is_valid_poem(text):
                             continue

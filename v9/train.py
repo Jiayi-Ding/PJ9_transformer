@@ -165,7 +165,8 @@ def main() -> None:
     p.add_argument("--val_pt", type=str, default=None)
     p.add_argument("--vocab", type=str, default=VOCAB)
     p.add_argument("--topic_vocab", type=str, default=TOPIC_VOCAB)
-    p.add_argument("--genre", type=str, choices=["5", "7", "ci"], default="5")
+    p.add_argument("--genre", type=str, default="5",
+               help="体裁或词牌名，支持：5,7,ci,浣溪沙,水调歌头,鹧鸪天,菩萨蛮,临江仙,满江红")
     p.add_argument("--save", type=str, default=None)
     p.add_argument("--use_topic", action="store_true", help="启用主题 embedding")
     p.add_argument("--block_size", type=int, default=BLOCK_SIZE)

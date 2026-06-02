@@ -259,7 +259,7 @@ def main():
 
     p = argparse.ArgumentParser(description="古诗生成 - 支持主题选择")
     p.add_argument("--ckpt", type=str, default=None)
-    p.add_argument("--genre", type=str, choices=["5", "7", "ci"], required=True, help="体裁: 5/7/ci")
+    p.add_argument("--genre", type=str, required=True, help="体裁或词牌名，如：5,7,ci,浣溪沙,水调歌头,鹧鸪天,菩萨蛮,临江仙,满江红")
     topic_choices = [
     "landscape", "frontier", "homesickness", "historical", "love",
     "objects", "farewell", "time_sorrow", "festival", "palace_grievance",

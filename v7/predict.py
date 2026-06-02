@@ -3,8 +3,8 @@
 自回归续写 / 生成 - 支持主题选择版本
 
 使用示例：
-    python predict_v4.py --genre 5 --topic landscape --prompt 春
-    python predict_v4.py --genre 7 --topic frontier --prompt 月 --max_new 100
+    python predict.py --genre 5 --topic landscape --prompt 春
+    python predict.py --genre 7 --topic frontier --prompt 月 --max_new 100
 """
 """【修改 predict.py 中 load_for_generate 函数以解决 torch.compile 导致的 state_dict 键名前缀问题】"""
 
