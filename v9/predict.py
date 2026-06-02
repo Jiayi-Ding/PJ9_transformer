@@ -3,15 +3,21 @@
 自回归续写 / 生成 - 支持主题选择版本
 
 使用示例：
-    python predict_v4.py --genre 5 --topic landscape --prompt 春
-    python predict_v4.py --genre 7 --topic frontier --prompt 月 --max_new 100
+    python predict.py --genre 5 --topic landscape --prompt 春
+    python predict.py --genre 7 --topic frontier --prompt 月 --max_new 100
 """
-"""【修改 predict.py 中 load_for_generate 函数以解决 torch.compile 导致的 state_dict 键名前缀问题】"""
-
+"""【v7: 修改 predict.py 中 load_for_generate 函数以解决 torch.compile 导致的 state_dict 键名前缀问题】"""
+"""【v9】
+ 新增重复惩罚 
+ 次数递增、
+ 跳过特殊token、
+ 性能优化（Counter）
+ """
 import argparse
 import os
 import sys
 from typing import Dict, List, Tuple, Optional
+from collections import Counter
 
 import torch
 import torch.nn.functional as F
@@ -28,10 +34,13 @@ def sample_next(
     topic_id: Optional[int],
     temperature: float, 
     device: torch.device,
-    use_adaptive: bool = False,   # 是否启用自适应
-    base_temp: float = 0.8,        # 基础温度
+    token_counter: Dict[int, int],      # 修改：接收 token 出现次数字典
+    rep_penalty: float = 1.2,          # 重复惩罚系数，>1 惩罚
+    skip_tokens: Optional[set] = None, # 新增：不惩罚的特殊 token 集合
+    use_adaptive: bool = False,        # 是否启用自适应
+    base_temp: float = 0.8,            # 基础温度
 ) -> int:
-    """采样下一个 token，支持主题"""
+    """采样下一个 token，支持主题和重复惩罚（次数递增，跳过特殊 token）"""
     model.eval()
     if idx.size(1) == 0:
         raise ValueError("序列为空")
@@ -44,12 +53,7 @@ def sample_next(
         topic_tensor = torch.tensor([topic_id], device=device)
     logits, _ = model(x, topic_ids=topic_tensor)
     last_logits = logits[:, -1, :]  # [B, V]
-    """
-    last = logits[:, -1, :] / max(temperature, 1e-6)
-    p = F.softmax(last, dim=-1)
-    nxt = torch.multinomial(p, num_samples=1).item()
-    return int(nxt)
-    """
+    
     # ========== 自适应温度：先算熵 ==========
     if use_adaptive:
         # 计算当前概率分布（用基础温度）
@@ -76,12 +80,27 @@ def sample_next(
     else:
         temp = temperature
     
-    # 用调整后的温度采样
+    # 用调整后的温度缩放 logits
     adjusted_logits = last_logits / max(temp, 1e-6)
+    
+    # ========== 优化版重复惩罚：次数递增 + 跳过特殊token ==========
+    if rep_penalty != 1.0 and token_counter:
+        penalized_logits = adjusted_logits.clone()
+        # 遍历所有已出现的 token 及其出现次数
+        for token_id, count in token_counter.items():
+            # 跳过特殊 token（如换行符、标点符号）
+            if skip_tokens and token_id in skip_tokens:
+                continue
+            # 线性递增惩罚：除以 (1 + (rep_penalty-1) * count)
+            # count=1 -> 除以 rep_penalty, count=2 -> 除以 1+2*(rep_penalty-1)
+            penalty_factor = 1.0 + (rep_penalty - 1.0) * count
+            penalized_logits[0, token_id] /= penalty_factor
+        adjusted_logits = penalized_logits
+    # ============================================================
+    
     p = F.softmax(adjusted_logits, dim=-1)
     nxt = torch.multinomial(p, num_samples=1).item()
     return int(nxt)
-    
 
 
 def _encode_chinese_prefix(prefix: str, stoi: Dict[str, int], device: torch.device) -> torch.Tensor:
@@ -108,8 +127,6 @@ def first_in_vocab_char(s: str, stoi: Dict[str, int]) -> str:
     raise ValueError("输入中无在词表内的字，请另试")
 
 
-
-
 @torch.no_grad()
 def generate_one(
     model: CharGPT,
@@ -121,6 +138,8 @@ def generate_one(
     max_new: int,
     temperature: float,
     stop_newline: bool,
+    rep_penalty: float = 1.2,          # 重复惩罚系数
+    skip_newline_penalty: bool = True, # 是否跳过换行符惩罚
 ) -> str:
     idx = _encode_chinese_prefix(prompt, stoi, device)
     newline_id = stoi.get("\n", None)
@@ -129,9 +148,37 @@ def generate_one(
             idx = torch.cat([torch.tensor([[newline_id]], device=device, dtype=torch.long), idx], dim=1)
     out_ids: List[int] = idx[0].tolist()
     
+    # 性能优化：使用 Counter 记录每个 token 出现次数
+    token_counter = Counter(out_ids)
+    
+    # 确定要跳过的特殊 token（换行符 + 标点符号）
+    skip_tokens = set()
+    if skip_newline_penalty and newline_id is not None:
+        skip_tokens.add(newline_id)
+    
+    # ========== 新增：将常见标点符号加入赦免列表，避免被惩罚 ==========
+    # 定义常见标点符号（中英文标点）
+    punctuation_chars = "，。！？；：、“”‘’《》【】（）．,.;:?!\"'`~@#$%^&*_+=-—…"
+    for ch in punctuation_chars:
+        if ch in stoi:
+            skip_tokens.add(stoi[ch])
+    # =================================================================
+    
     for _ in range(max_new):
-        nxt = sample_next(model, torch.tensor([out_ids], device=device, dtype=torch.long), topic_id, temperature, device, use_adaptive=True, base_temp=temperature)
+        nxt = sample_next(
+            model, 
+            torch.tensor([out_ids], device=device, dtype=torch.long), 
+            topic_id, 
+            temperature, 
+            device,
+            token_counter=token_counter,      # 传递 Counter
+            rep_penalty=rep_penalty,
+            skip_tokens=skip_tokens,          # 传递跳过集合（含换行符和标点）
+            use_adaptive=True,                # 保持原有的自适应温度
+            base_temp=temperature
+        )
         out_ids.append(nxt)
+        token_counter[nxt] += 1               # 更新计数
         if stop_newline and newline_id is not None and nxt == newline_id:
             break
     return "".join(itos.get(i, "?") for i in out_ids)
@@ -227,6 +274,9 @@ def main():
     p.add_argument("--max_new", type=int, default=200, help="新增长度")
     p.add_argument("--temperature", type=float, default=0.8, help="温度参数")
     p.add_argument("--stop_newline", action="store_true", help="遇到换行符停止")
+    # 重复惩罚参数
+    p.add_argument("--rep_penalty", type=float, default=1.2, help="重复惩罚系数（>1 惩罚已出现字，1 表示无惩罚）")
+    p.add_argument("--skip_newline_penalty", action="store_true", default=True, help="跳过对换行符的惩罚")
     args = p.parse_args()
 
     # 设置 checkpoint 路径
@@ -276,7 +326,9 @@ def main():
         text = generate_one(
             model, stoi, itos, device,
             args.prompt, topic_id,
-            args.max_new, args.temperature, args.stop_newline
+            args.max_new, args.temperature, args.stop_newline,
+            rep_penalty=args.rep_penalty,
+            skip_newline_penalty=args.skip_newline_penalty
         )
         print("\n" + "=" * 40)
         print(text)
