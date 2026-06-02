@@ -21,7 +21,12 @@
 【v7】
 1.清洗了数据，“无法识别/缺字→小方框代替”这种情况的数据被剔除
 """
-
+"""
+【v12】修改：删除 ci 体裁，只保留五言七言
+"""
+"""
+【v13】修改：从本地宋词目录加载六个词牌名的宋词数据，与五言七言统一处理
+"""
 
 import os
 import re
@@ -43,14 +48,17 @@ except ImportError:
 
 cc = OpenCC('t2s')  # 繁体到简体
 
-GENRES = ("5", "7", "ci")
+GENRES = ("5", "7")  # 五言七言体裁
 
 # 方案 2：按类别目标数量补齐
-TARGET_PER_GENRE = {"5": 100000, "7": 100000, "ci": 100000}
+TARGET_PER_GENRE = {"5": 100000, "7": 100000}
 MAX_PASS = 5
 PASS_SAMPLE_SIZE = 100000
 
-# ========== 新增：主题关键词库 ==========
+# ========== 目标词牌名列表 ==========
+TARGET_CIPAI = ["浣溪沙", "水调歌头", "鹧鸪天", "菩萨蛮", "临江仙", "满江红"]
+
+# ========== 主题关键词库 ==========
 TOPIC_KEYWORDS = {
     "landscape": [  # 山水田园
         "山", "水", "江", "河", "湖", "海", "峰", "岭", "岳", "川", "泉", "溪", "涧", "潭",
@@ -253,7 +261,7 @@ def normalize_poem_text(text: str) -> str:
 
 def is_valid_poem(text: str) -> bool:
     """
-    判断一首诗是否有效（无缺字、无全缺字行、长度合理）
+    判断一首诗/词是否有效（无缺字、无全缺字行、长度合理）
     """
     if not text or len(text.strip()) == 0:
         return False
@@ -334,9 +342,62 @@ def encode_and_save(text: str, stoi: dict, out_path: str) -> None:
     torch.save(data, out_path)
 
 
+def load_cipai_from_local() -> dict:
+    """
+    从当前目录下的 '宋词' 文件夹（chinese-poetry 项目结构）中加载六个词牌名的宋词数据。
+    假设目录结构: ./宋词/*.json
+    返回: {词牌名: [词文本列表]}
+    """
+    print("\n" + "=" * 50)
+    print("步骤 2.5：从本地 '宋词' 目录加载宋词数据（六个词牌名）")
+    print("=" * 50)
+    
+    ci_dir = os.path.join(os.path.dirname(__file__), "宋词")
+    if not os.path.isdir(ci_dir):
+        print(f"警告: 找不到宋词目录: {ci_dir}，将跳过词牌数据加载。", file=sys.stderr)
+        return {}
+
+    import glob
+    cipai_dict = {cp: [] for cp in TARGET_CIPAI}
+    total_valid = 0
+
+    json_files = glob.glob(os.path.join(ci_dir, "*.json"))
+    if not json_files:
+        print(f"警告: 在 {ci_dir} 下未找到任何 JSON 文件。", file=sys.stderr)
+        return {}
+
+    for json_file in json_files:
+        try:
+            with open(json_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # 数据可能是列表形式
+                if isinstance(data, list):
+                    for item in data:
+                        rhythmic = item.get("rhythmic", "")
+                        if rhythmic not in TARGET_CIPAI:
+                            continue
+                        paragraphs = item.get("paragraphs", [])
+                        if not paragraphs:
+                            continue
+                        # 用换行符连接段落
+                        text = "\n".join(paragraphs)
+                        text = normalize_poem_text(text)
+                        if not is_valid_poem(text):
+                            continue
+                        cipai_dict[rhythmic].append(text)
+                        total_valid += 1
+        except Exception as e:
+            print(f"警告: 处理文件 {json_file} 时出错: {e}", file=sys.stderr)
+
+    print(f"成功加载有效宋词: {total_valid} 首")
+    for cp, poems in cipai_dict.items():
+        print(f"  {cp}: {len(poems)} 首")
+    return cipai_dict
+
+
 def main():
     print("=" * 50)
-    print("步骤 1：下载真实唐宋古诗数据集")
+    print("步骤 1：下载真实唐宋古诗数据集（五言七言）")
     print("=" * 50)
     dataset = load_dataset("Lifan-Z/Chinese-poetries-txt", split="train")
     print(f"数据集总条数: {len(dataset)}")
@@ -347,7 +408,7 @@ def main():
     print(f"使用列: {text_col}")
 
     print("\n" + "=" * 50)
-    print("步骤 2：按体裁目标数量补齐样本（繁体已转简体）")
+    print("步骤 2：按五言七言体裁目标数量补齐样本")
     print("=" * 50)
 
     poems_by_genre = {g: [] for g in GENRES}
@@ -357,7 +418,7 @@ def main():
     print(f"目标每类样本数: {targets}")
 
     added = True
-    filtered_count = 0  # 新增：记录过滤掉的诗歌数量
+    filtered_count = 0
     for pass_i in range(MAX_PASS):
         if all(len(poems_by_genre[g]) >= targets[g] for g in GENRES):
             break
@@ -377,12 +438,13 @@ def main():
             text = normalize_poem_text(text)
             if not text or text in seen_texts:
                 continue
-            # 新增：清洗无效诗歌
             if not is_valid_poem(text):
                 filtered_count += 1
                 continue
             seen_texts.add(text)
             genre = classify_poem(text)
+            if genre not in GENRES:
+                continue
             if len(poems_by_genre[genre]) < targets[genre]:
                 poems_by_genre[genre].append(text)
                 all_texts.append(text)
@@ -391,18 +453,28 @@ def main():
                 break
 
     print(f"过滤掉的无效诗歌数: {filtered_count}")
+    print(f"实际抽样五言七言条数: {len(all_texts)}")
+
+    # ========== 加载词牌数据 ==========
+    cipai_data = load_cipai_from_local()
+    for cp, poems in cipai_data.items():
+        if poems:
+            poems_by_genre[cp] = poems
+            all_texts.extend(poems)
+
+    # 汇总
+    total_poems = sum(len(poems) for poems in poems_by_genre.values())
+    print(f"\n总计有效作品数（五言+七言+词牌）: {total_poems}")
 
     all_text = "\n\n".join(all_texts)
     with open("poetry.txt", "w", encoding="utf-8") as f:
         f.write(all_text)
-
-    print(f"实际抽样条数: {len(all_texts)}")
     print(f"已保存 poetry.txt，总字符数约: {len(all_text)}")
-    for genre in GENRES:
-        print(f"  体裁 {genre}：{len(poems_by_genre[genre])} 条（目标 {targets[genre]}）")
+    for genre, poems in poems_by_genre.items():
+        print(f"  {genre}: {len(poems)} 首")
 
     print("\n" + "=" * 50)
-    print("步骤 3：构建字符级词表并保存 vocab.json")
+    print("步骤 3：构建字符级词表并保存 vocab.json（基于所有文本）")
     print("=" * 50)
     chars = sorted(list(set(all_text)))
     vocab_size = len(chars)
@@ -417,10 +489,9 @@ def main():
 
     with open("vocab.json", "w", encoding="utf-8") as f:
         json.dump(vocab, f, ensure_ascii=False, indent=2)
-
     print(f"词表大小: {vocab_size}")
 
-    # 新增：保存主题词表
+    # 保存主题词表
     print("\n" + "=" * 50)
     print("步骤 3.5：保存主题词表 topic_vocab.json")
     print("=" * 50)
@@ -431,19 +502,18 @@ def main():
     }
     with open("topic_vocab.json", "w", encoding="utf-8") as f:
         json.dump(topic_vocab, f, ensure_ascii=False, indent=2)
-    print(f"已保存主题词表: topic_vocab.json (主题数: {NUM_TOPICS}, 主题: {TOPIC_LIST})")
+    print(f"已保存主题词表: topic_vocab.json (主题数: {NUM_TOPICS})")
 
     print("\n" + "=" * 50)
-    print("步骤 4：按体裁划分 9:1 训练/验证集并保存 .pt 文件（含主题标签）")
+    print("步骤 4：按体裁（五言、七言、各词牌名）划分 9:1 训练/验证集并保存 .pt 文件")
     print("=" * 50)
-    
-    for genre in GENRES:
-        poems = poems_by_genre[genre]
-        print(f"体裁 {genre}：{len(poems)} 首")
+
+    for genre, poems in poems_by_genre.items():
+        print(f"\n处理体裁/词牌: {genre}，共 {len(poems)} 首")
         if not poems:
-            print(f"  跳过体裁 {genre}，未找到数据。")
+            print(f"  跳过 {genre}，无数据。")
             continue
-        
+
         # 保存纯文本
         write_text_file(f"poetry_{genre}.txt", poems)
 
@@ -455,7 +525,7 @@ def main():
         train_text = "\n\n".join(train_poems)
         val_text = "\n\n".join(val_poems)
 
-        # ===== 构建边界 =====
+        # 构建边界
         train_boundaries = []
         pos = 0
         for poem in train_poems:
@@ -478,21 +548,19 @@ def main():
         print(f"训练边界数: {len(train_boundaries)}")
         print(f"验证边界数: {len(val_boundaries)}")
 
-        # ========== 新增：生成并保存主题标签 ==========
-        # 为每首诗计算主题标签（诗级别）
+        # 主题标签
         train_topics = []
         for poem in train_poems:
             topic = classify_topic(poem)
             topic_id = TOPIC_LIST.index(topic)
             train_topics.append(topic_id)
-        
+
         val_topics = []
         for poem in val_poems:
             topic = classify_topic(poem)
             topic_id = TOPIC_LIST.index(topic)
             val_topics.append(topic_id)
-        
-        # 保存为 .pt 文件（训练时 DataLoader 会按"首"读取）
+
         train_topics_tensor = torch.tensor(train_topics, dtype=torch.long)
         val_topics_tensor = torch.tensor(val_topics, dtype=torch.long)
         train_boundaries = torch.tensor(train_boundaries, dtype=torch.long)
@@ -508,8 +576,6 @@ def main():
         train_dist = Counter(train_topic_names)
         val_topic_names = [TOPIC_LIST[tid] for tid in val_topics]
         val_dist = Counter(val_topic_names)
-        
-        print(f"  已保存主题标签: topics_train_{genre}.pt, topics_val_{genre}.pt")
         print(f"  训练集主题分布: {dict(train_dist)}")
         print(f"  验证集主题分布: {dict(val_dist)}")
 
