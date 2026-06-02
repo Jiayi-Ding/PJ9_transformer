@@ -382,7 +382,7 @@ def load_cipai_from_local() -> dict:
                         if not paragraphs:
                             continue
                         # 用换行符连接段落
-                        text = "".join(paragraphs)
+                        text = "\n".join(paragraphs)
                         text = normalize_poem_text(text)
                         if not is_valid_poem(text):
                             continue
