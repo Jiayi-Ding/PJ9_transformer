@@ -1,0 +1,182 @@
+10 目录文件说明
+本文档用于说明 v10 目录下各个 Python 文件的作用、实现功能，以及它们在整个古诗/词生成项目中的位置。
+
+一、项目整体功能
+v10 是一个基于 Transformer 的古诗/词生成项目，主要功能包括：
+
+古诗文本数据预处理
+按体裁划分训练数据
+词牌训练与生成
+主题标注与主题控制生成
+模型训练与保存
+模型加载与文本生成
+批量训练多个模型
+项目支持的主要控制维度有：
+
+体裁：5、7、ci
+词牌：如 huanxisha、shuidiaogetou 等
+主题：如 frontier、landscape、farewell 等
+二、各文件功能说明
+1. prepare_data.py
+作用
+负责原始古诗数据的下载、清洗、分类、标注和保存，是整个项目的数据准备入口。
+
+主要功能
+下载古诗数据集
+将繁体中文转换为简体中文
+过滤无效文本、重复文本
+按体裁划分为：
+五言诗 5
+七言诗 7
+词 ci
+构建字符级词表 vocab.json
+构建主题词表 topic_vocab.json
+为每首诗自动分配主题标签
+生成训练集和验证集
+保存主题标签文件与边界文件
+输出文件
+poetry.txt
+poetry_5.txt、poetry_7.txt、poetry_ci.txt
+vocab.json
+topic_vocab.json
+train_data_5.pt、val_data_5.pt 等
+topics_train_5.pt、topics_val_5.pt 等
+boundaries_train_5.pt、boundaries_val_5.pt 等
+说明
+这个文件决定了后续训练能否正常运行。
+如果没有先运行它，就无法生成训练所需的数据文件。
+
+2. dataset.py
+作用
+负责加载预处理后的数据，并构造模型训练时需要的样本。
+
+主要功能
+读取词表文件
+读取主题词表文件
+提供 PoetryBlockDataset 数据集类
+从长序列中随机截取固定长度片段
+构造下一字预测任务 (x, y)
+在启用主题时返回 (x, y, topic_id)
+核心类
+PoetryBlockDataset
+用于生成训练样本，支持：
+
+普通古诗/词训练
+带主题控制的训练
+随机采样与顺序采样
+说明
+这是训练数据和模型之间的桥梁。
+训练脚本会通过它读取 .pt 数据文件并组织成 batch。
+
+3. model.py
+作用
+定义项目中的 Transformer 语言模型。
+
+主要功能
+实现因果自注意力机制 CausalSelfAttention
+实现前馈网络 FeedForward
+实现 Transformer block TransformerBlock
+实现主模型 CharGPT
+模型特点
+字符级建模
+Decoder-only 架构
+支持位置编码
+支持主题 embedding
+支持下一字符预测
+核心类
+CharGPT
+这是项目的主模型。
+输入前文字符后，预测下一个字符，同时可以根据主题条件改变生成倾向。
+
+说明
+这个文件定义了模型“长什么样”。
+主题控制能力是否能实现，关键也取决于这里是否支持 topic_emb。
+
+4. train.py
+作用
+模型训练主脚本，用于训练 Transformer 并保存最优模型。
+
+主要功能
+读取训练集和验证集
+构造 CharGPT 模型
+支持体裁训练
+支持词牌训练
+支持主题训练
+支持重复项惩罚相关训练开关
+自动保存验证集上最优模型
+绘制训练曲线
+支持的训练方式
+通用古诗训练
+词牌训练
+主题控制训练
+输出文件
+ckpt_best.pt 或 ckpt_best_5.pt 之类的模型文件
+loss_curve.png
+说明
+这是项目最核心的训练文件之一。
+如果想让模型具备某种控制能力，通常需要先在这里把对应标签喂进去训练。
+
+5. predict.py
+作用
+模型推理与文本生成脚本，用于加载训练好的模型并生成古诗或词。
+
+主要功能
+加载模型参数
+加载词表
+支持体裁选择
+支持词牌选择
+支持主题选择
+支持自动主题选择
+支持重复项惩罚采样
+支持自适应 temperature
+支持遇到换行时停止生成
+主题功能
+predict.py 中已经支持通过 --topic 选择主题，例如：
+
+frontier
+landscape
+homesickness
+farewell
+war_atrocity
+如果不手动指定主题，也可以根据起笔字自动推断一个主题。
+
+说明
+这是用户实际使用最多的文件之一。
+训练完成后，最终生成的内容通常就是从这里输出的。
+
+6. train_all.py
+作用
+批量训练脚本，用于一键训练多个模型。
+
+主要功能
+自动训练通用体裁模型：
+5
+7
+ci
+自动训练多个词牌模型
+已存在模型会自动跳过
+支持中断后继续运行
+适用场景
+如果你需要一次性训练多个模型，这个脚本最方便。
+
+说明
+相比手动一个个运行 train.py，这个文件更适合批量部署和集中训练。
+
+7. poetry_config.py
+作用
+统一管理词牌相关配置。
+
+主要功能
+定义默认词牌名
+提供词牌中文名映射
+提供训练文件名、验证文件名、词表文件名、模型文件名的统一生成方式
+从 cipai_plan.json 中读取可训练词牌计划
+主要函数
+poetry_label(name)
+train_pt(name)
+val_pt(name)
+vocab_json(name)
+model_pt(name)
+list_trainable_from_plan()
+说明
+这个文件主要服务于词牌训练和词牌生成，是路径和名称的统一管理中心。
