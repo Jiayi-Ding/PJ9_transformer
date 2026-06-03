@@ -1,5 +1,0 @@
-torch
-matplotlib
-datasets
-opencc-python-reimplemented
-gradio
