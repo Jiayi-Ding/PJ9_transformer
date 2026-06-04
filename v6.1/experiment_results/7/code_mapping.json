@@ -1,0 +1,455 @@
+{
+  "description": "评分结束后用此文件解码匿名编号 → 实验组别",
+  "mapping": {
+    "P01": {
+      "original_code": "G1_06",
+      "group_id": "G1",
+      "group_name": "原始阈值",
+      "entropy_high": 2.5,
+      "entropy_mid": 1.5,
+      "entropy_low": 0.8,
+      "use_adaptive": true
+    },
+    "P02": {
+      "original_code": "G1_03",
+      "group_id": "G1",
+      "group_name": "原始阈值",
+      "entropy_high": 2.5,
+      "entropy_mid": 1.5,
+      "entropy_low": 0.8,
+      "use_adaptive": true
+    },
+    "P03": {
+      "original_code": "G3_06",
+      "group_id": "G3",
+      "group_name": "中拉伸",
+      "entropy_high": 3.5,
+      "entropy_mid": 2.0,
+      "entropy_low": 0.3,
+      "use_adaptive": true
+    },
+    "P04": {
+      "original_code": "G4_06",
+      "group_id": "G4",
+      "group_name": "强拉伸",
+      "entropy_high": 4.5,
+      "entropy_mid": 2.5,
+      "entropy_low": 0.1,
+      "use_adaptive": true
+    },
+    "P05": {
+      "original_code": "G2_07",
+      "group_id": "G2",
+      "group_name": "微拉伸",
+      "entropy_high": 3.0,
+      "entropy_mid": 1.8,
+      "entropy_low": 0.5,
+      "use_adaptive": true
+    },
+    "P06": {
+      "original_code": "G4_01",
+      "group_id": "G4",
+      "group_name": "强拉伸",
+      "entropy_high": 4.5,
+      "entropy_mid": 2.5,
+      "entropy_low": 0.1,
+      "use_adaptive": true
+    },
+    "P07": {
+      "original_code": "G3_03",
+      "group_id": "G3",
+      "group_name": "中拉伸",
+      "entropy_high": 3.5,
+      "entropy_mid": 2.0,
+      "entropy_low": 0.3,
+      "use_adaptive": true
+    },
+    "P08": {
+      "original_code": "G1_08",
+      "group_id": "G1",
+      "group_name": "原始阈值",
+      "entropy_high": 2.5,
+      "entropy_mid": 1.5,
+      "entropy_low": 0.8,
+      "use_adaptive": true
+    },
+    "P09": {
+      "original_code": "G2_05",
+      "group_id": "G2",
+      "group_name": "微拉伸",
+      "entropy_high": 3.0,
+      "entropy_mid": 1.8,
+      "entropy_low": 0.5,
+      "use_adaptive": true
+    },
+    "P10": {
+      "original_code": "G5_08",
+      "group_id": "G5",
+      "group_name": "无自适应对照",
+      "entropy_high": null,
+      "entropy_mid": null,
+      "entropy_low": null,
+      "use_adaptive": false
+    },
+    "P11": {
+      "original_code": "G1_01",
+      "group_id": "G1",
+      "group_name": "原始阈值",
+      "entropy_high": 2.5,
+      "entropy_mid": 1.5,
+      "entropy_low": 0.8,
+      "use_adaptive": true
+    },
+    "P12": {
+      "original_code": "G2_01",
+      "group_id": "G2",
+      "group_name": "微拉伸",
+      "entropy_high": 3.0,
+      "entropy_mid": 1.8,
+      "entropy_low": 0.5,
+      "use_adaptive": true
+    },
+    "P13": {
+      "original_code": "G2_02",
+      "group_id": "G2",
+      "group_name": "微拉伸",
+      "entropy_high": 3.0,
+      "entropy_mid": 1.8,
+      "entropy_low": 0.5,
+      "use_adaptive": true
+    },
+    "P14": {
+      "original_code": "G2_03",
+      "group_id": "G2",
+      "group_name": "微拉伸",
+      "entropy_high": 3.0,
+      "entropy_mid": 1.8,
+      "entropy_low": 0.5,
+      "use_adaptive": true
+    },
+    "P15": {
+      "original_code": "G3_01",
+      "group_id": "G3",
+      "group_name": "中拉伸",
+      "entropy_high": 3.5,
+      "entropy_mid": 2.0,
+      "entropy_low": 0.3,
+      "use_adaptive": true
+    },
+    "P16": {
+      "original_code": "G5_06",
+      "group_id": "G5",
+      "group_name": "无自适应对照",
+      "entropy_high": null,
+      "entropy_mid": null,
+      "entropy_low": null,
+      "use_adaptive": false
+    },
+    "P17": {
+      "original_code": "G3_04",
+      "group_id": "G3",
+      "group_name": "中拉伸",
+      "entropy_high": 3.5,
+      "entropy_mid": 2.0,
+      "entropy_low": 0.3,
+      "use_adaptive": true
+    },
+    "P18": {
+      "original_code": "G3_08",
+      "group_id": "G3",
+      "group_name": "中拉伸",
+      "entropy_high": 3.5,
+      "entropy_mid": 2.0,
+      "entropy_low": 0.3,
+      "use_adaptive": true
+    },
+    "P19": {
+      "original_code": "G1_04",
+      "group_id": "G1",
+      "group_name": "原始阈值",
+      "entropy_high": 2.5,
+      "entropy_mid": 1.5,
+      "entropy_low": 0.8,
+      "use_adaptive": true
+    },
+    "P20": {
+      "original_code": "G4_04",
+      "group_id": "G4",
+      "group_name": "强拉伸",
+      "entropy_high": 4.5,
+      "entropy_mid": 2.5,
+      "entropy_low": 0.1,
+      "use_adaptive": true
+    },
+    "P21": {
+      "original_code": "G1_07",
+      "group_id": "G1",
+      "group_name": "原始阈值",
+      "entropy_high": 2.5,
+      "entropy_mid": 1.5,
+      "entropy_low": 0.8,
+      "use_adaptive": true
+    },
+    "P22": {
+      "original_code": "G3_10",
+      "group_id": "G3",
+      "group_name": "中拉伸",
+      "entropy_high": 3.5,
+      "entropy_mid": 2.0,
+      "entropy_low": 0.3,
+      "use_adaptive": true
+    },
+    "P23": {
+      "original_code": "G4_09",
+      "group_id": "G4",
+      "group_name": "强拉伸",
+      "entropy_high": 4.5,
+      "entropy_mid": 2.5,
+      "entropy_low": 0.1,
+      "use_adaptive": true
+    },
+    "P24": {
+      "original_code": "G4_03",
+      "group_id": "G4",
+      "group_name": "强拉伸",
+      "entropy_high": 4.5,
+      "entropy_mid": 2.5,
+      "entropy_low": 0.1,
+      "use_adaptive": true
+    },
+    "P25": {
+      "original_code": "G2_09",
+      "group_id": "G2",
+      "group_name": "微拉伸",
+      "entropy_high": 3.0,
+      "entropy_mid": 1.8,
+      "entropy_low": 0.5,
+      "use_adaptive": true
+    },
+    "P26": {
+      "original_code": "G1_10",
+      "group_id": "G1",
+      "group_name": "原始阈值",
+      "entropy_high": 2.5,
+      "entropy_mid": 1.5,
+      "entropy_low": 0.8,
+      "use_adaptive": true
+    },
+    "P27": {
+      "original_code": "G2_04",
+      "group_id": "G2",
+      "group_name": "微拉伸",
+      "entropy_high": 3.0,
+      "entropy_mid": 1.8,
+      "entropy_low": 0.5,
+      "use_adaptive": true
+    },
+    "P28": {
+      "original_code": "G4_08",
+      "group_id": "G4",
+      "group_name": "强拉伸",
+      "entropy_high": 4.5,
+      "entropy_mid": 2.5,
+      "entropy_low": 0.1,
+      "use_adaptive": true
+    },
+    "P29": {
+      "original_code": "G5_07",
+      "group_id": "G5",
+      "group_name": "无自适应对照",
+      "entropy_high": null,
+      "entropy_mid": null,
+      "entropy_low": null,
+      "use_adaptive": false
+    },
+    "P30": {
+      "original_code": "G3_05",
+      "group_id": "G3",
+      "group_name": "中拉伸",
+      "entropy_high": 3.5,
+      "entropy_mid": 2.0,
+      "entropy_low": 0.3,
+      "use_adaptive": true
+    },
+    "P31": {
+      "original_code": "G3_09",
+      "group_id": "G3",
+      "group_name": "中拉伸",
+      "entropy_high": 3.5,
+      "entropy_mid": 2.0,
+      "entropy_low": 0.3,
+      "use_adaptive": true
+    },
+    "P32": {
+      "original_code": "G3_07",
+      "group_id": "G3",
+      "group_name": "中拉伸",
+      "entropy_high": 3.5,
+      "entropy_mid": 2.0,
+      "entropy_low": 0.3,
+      "use_adaptive": true
+    },
+    "P33": {
+      "original_code": "G5_10",
+      "group_id": "G5",
+      "group_name": "无自适应对照",
+      "entropy_high": null,
+      "entropy_mid": null,
+      "entropy_low": null,
+      "use_adaptive": false
+    },
+    "P34": {
+      "original_code": "G5_02",
+      "group_id": "G5",
+      "group_name": "无自适应对照",
+      "entropy_high": null,
+      "entropy_mid": null,
+      "entropy_low": null,
+      "use_adaptive": false
+    },
+    "P35": {
+      "original_code": "G4_02",
+      "group_id": "G4",
+      "group_name": "强拉伸",
+      "entropy_high": 4.5,
+      "entropy_mid": 2.5,
+      "entropy_low": 0.1,
+      "use_adaptive": true
+    },
+    "P36": {
+      "original_code": "G5_04",
+      "group_id": "G5",
+      "group_name": "无自适应对照",
+      "entropy_high": null,
+      "entropy_mid": null,
+      "entropy_low": null,
+      "use_adaptive": false
+    },
+    "P37": {
+      "original_code": "G4_05",
+      "group_id": "G4",
+      "group_name": "强拉伸",
+      "entropy_high": 4.5,
+      "entropy_mid": 2.5,
+      "entropy_low": 0.1,
+      "use_adaptive": true
+    },
+    "P38": {
+      "original_code": "G2_06",
+      "group_id": "G2",
+      "group_name": "微拉伸",
+      "entropy_high": 3.0,
+      "entropy_mid": 1.8,
+      "entropy_low": 0.5,
+      "use_adaptive": true
+    },
+    "P39": {
+      "original_code": "G5_03",
+      "group_id": "G5",
+      "group_name": "无自适应对照",
+      "entropy_high": null,
+      "entropy_mid": null,
+      "entropy_low": null,
+      "use_adaptive": false
+    },
+    "P40": {
+      "original_code": "G4_07",
+      "group_id": "G4",
+      "group_name": "强拉伸",
+      "entropy_high": 4.5,
+      "entropy_mid": 2.5,
+      "entropy_low": 0.1,
+      "use_adaptive": true
+    },
+    "P41": {
+      "original_code": "G1_02",
+      "group_id": "G1",
+      "group_name": "原始阈值",
+      "entropy_high": 2.5,
+      "entropy_mid": 1.5,
+      "entropy_low": 0.8,
+      "use_adaptive": true
+    },
+    "P42": {
+      "original_code": "G5_05",
+      "group_id": "G5",
+      "group_name": "无自适应对照",
+      "entropy_high": null,
+      "entropy_mid": null,
+      "entropy_low": null,
+      "use_adaptive": false
+    },
+    "P43": {
+      "original_code": "G5_09",
+      "group_id": "G5",
+      "group_name": "无自适应对照",
+      "entropy_high": null,
+      "entropy_mid": null,
+      "entropy_low": null,
+      "use_adaptive": false
+    },
+    "P44": {
+      "original_code": "G1_05",
+      "group_id": "G1",
+      "group_name": "原始阈值",
+      "entropy_high": 2.5,
+      "entropy_mid": 1.5,
+      "entropy_low": 0.8,
+      "use_adaptive": true
+    },
+    "P45": {
+      "original_code": "G1_09",
+      "group_id": "G1",
+      "group_name": "原始阈值",
+      "entropy_high": 2.5,
+      "entropy_mid": 1.5,
+      "entropy_low": 0.8,
+      "use_adaptive": true
+    },
+    "P46": {
+      "original_code": "G4_10",
+      "group_id": "G4",
+      "group_name": "强拉伸",
+      "entropy_high": 4.5,
+      "entropy_mid": 2.5,
+      "entropy_low": 0.1,
+      "use_adaptive": true
+    },
+    "P47": {
+      "original_code": "G3_02",
+      "group_id": "G3",
+      "group_name": "中拉伸",
+      "entropy_high": 3.5,
+      "entropy_mid": 2.0,
+      "entropy_low": 0.3,
+      "use_adaptive": true
+    },
+    "P48": {
+      "original_code": "G5_01",
+      "group_id": "G5",
+      "group_name": "无自适应对照",
+      "entropy_high": null,
+      "entropy_mid": null,
+      "entropy_low": null,
+      "use_adaptive": false
+    },
+    "P49": {
+      "original_code": "G2_08",
+      "group_id": "G2",
+      "group_name": "微拉伸",
+      "entropy_high": 3.0,
+      "entropy_mid": 1.8,
+      "entropy_low": 0.5,
+      "use_adaptive": true
+    },
+    "P50": {
+      "original_code": "G2_10",
+      "group_id": "G2",
+      "group_name": "微拉伸",
+      "entropy_high": 3.0,
+      "entropy_mid": 1.8,
+      "entropy_low": 0.5,
+      "use_adaptive": true
+    }
+  }
+}
