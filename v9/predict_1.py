@@ -3,10 +3,13 @@
 自回归续写 / 生成 - 支持主题选择版本
 
 使用示例：
-    python predict.py --genre 临江仙 --topic landscape --prompt 春 --stop_newline
+    python predict.py --genre 浣溪沙 --topic landscape --prompt 春
     python predict.py --genre 7 --topic frontier --prompt 月 --max_new 100
 """
-"""【v7: 修改 predict.py 中 load_for_generate 函数以解决 torch.compile 导致的 state_dict 键名前缀问题】"""
+"""【v7】
+ 修改 predict.py 中 load_for_generate 函数以解决 torch.compile 导致的 state_dict 键名前缀问题
+"""
+
 """【v9】
  新增重复惩罚 
  次数递增、
@@ -39,7 +42,6 @@ def sample_next(
     skip_tokens: Optional[set] = None, # 新增：不惩罚的特殊 token 集合
     use_adaptive: bool = False,        # 是否启用自适应
     base_temp: float = 0.8,            # 基础温度
-    temp_factor: float = 1.0,
 ) -> int:
     """采样下一个 token，支持主题和重复惩罚（次数递增，跳过特殊 token）"""
     model.eval()
@@ -80,8 +82,6 @@ def sample_next(
         # print(f"熵={entropy.item():.2f}, 温度={temp:.2f}")
     else:
         temp = temperature
-
-    temp *= temp_factor
     
     # 用调整后的温度缩放 logits
     adjusted_logits = last_logits / max(temp, 1e-6)
@@ -143,25 +143,14 @@ def generate_one(
     stop_newline: bool,
     rep_penalty: float = 1.2,          # 重复惩罚系数
     skip_newline_penalty: bool = True, # 是否跳过换行符惩罚
-    target_lines: int = 4,
 ) -> str:
     idx = _encode_chinese_prefix(prompt, stoi, device)
     newline_id = stoi.get("\n", None)
     if len(prompt) == 1 and newline_id is not None:
         if idx.size(1) == 0 or int(idx[0, 0].item()) != int(newline_id):
             idx = torch.cat([torch.tensor([[newline_id]], device=device, dtype=torch.long), idx], dim=1)
-    
-    sentence_end_chars = "，。！？"
-    end_token_ids = [stoi.get(ch) for ch in sentence_end_chars if ch in stoi]
-
     out_ids: List[int] = idx[0].tolist()
-
-    # 当前已经生成了多少行
-    line_count = 0
-
-    # 记录偶句押韵字
-    rhyme_char = None
-
+    
     # 性能优化：使用 Counter 记录每个 token 出现次数
     token_counter = Counter(out_ids)
     
@@ -179,24 +168,6 @@ def generate_one(
     # =================================================================
     
     for _ in range(max_new):
-#*********** 体裁/首颔颈尾的温度调整（可选） **********
-        # 默认倍率
-        temp_factor = 1.0
-        # 七律 / 五律
-        if target_lines == 8:
-            # 颔联
-            if line_count in [2, 3]:
-                temp_factor = 0.8
-            # 颈联
-            elif line_count in [4, 5]:
-                temp_factor = 1.1
-        # 绝句
-        elif target_lines == 4:
-            if line_count in [0, 1]:
-                temp_factor = 0.8
-            elif line_count in [2, 3]:
-                temp_factor = 1.1
-#*******************************************************
         nxt = sample_next(
             model, 
             torch.tensor([out_ids], device=device, dtype=torch.long), 
@@ -207,17 +178,12 @@ def generate_one(
             rep_penalty=rep_penalty,
             skip_tokens=skip_tokens,          # 传递跳过集合（含换行符和标点）
             use_adaptive=True,                # 保持原有的自适应温度
-            base_temp=temperature,
-            temp_factor=temp_factor,# 根据体裁/首颔颈尾调整温度
+            base_temp=temperature
         )
         out_ids.append(nxt)
         token_counter[nxt] += 1               # 更新计数
-        #*****************实现自动结束，不依靠stopnewline，改为 --lines 4或 --lines 8*********************
-        if nxt in end_token_ids:
-            line_count += 1
-            if line_count >= target_lines:
-                break
-        #**********************************
+        if stop_newline and newline_id is not None and nxt == newline_id:
+            break
     return "".join(itos.get(i, "?") for i in out_ids)
 
 
@@ -309,13 +275,6 @@ def main():
     p.add_argument("--topic_vocab", type=str, default="topic_vocab.json")
     p.add_argument("--prompt", type=str, default="春", help="起笔字")
     p.add_argument("--max_new", type=int, default=200, help="新增长度")
-    p.add_argument(
-        "--lines",
-        type=int,
-        default=4,
-        choices=[4, 8],
-        help="4=绝句，8=律诗"
-    )
     p.add_argument("--temperature", type=float, default=0.8, help="温度参数")
     p.add_argument("--stop_newline", action="store_true", help="遇到换行符停止")
     # 重复惩罚参数
@@ -368,16 +327,12 @@ def main():
     print(f"体裁: {args.genre}, 起笔字: {args.prompt}")
     try:
         text = generate_one(
-        model, stoi, itos, device,
-        args.prompt,
-        topic_id,
-        args.max_new,
-        args.temperature,
-        False,
-        rep_penalty=args.rep_penalty,
-        skip_newline_penalty=args.skip_newline_penalty,
-        target_lines=args.lines,
-    )
+            model, stoi, itos, device,
+            args.prompt, topic_id,
+            args.max_new, args.temperature, args.stop_newline,
+            rep_penalty=args.rep_penalty,
+            skip_newline_penalty=args.skip_newline_penalty
+        )
         print("\n" + "=" * 40)
         print(text)
         print("=" * 40)
