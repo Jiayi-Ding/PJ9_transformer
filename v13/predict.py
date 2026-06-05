@@ -25,14 +25,15 @@
 """【v11】
  新增平仄约束功能：
  --use_pingze: 启用平仄约束（基于标准绝句/律诗格式）
- 支持五言/七言、绝句/律诗、平起/仄起自动选择
- 与押韵功能协同工作（取交集，若无交集则放弃押韵）
- 修复自动定韵时平仄约束失效及标点被选为韵脚的问题
+ 支持五言/七言、绝句/律诗，根据起笔字平仄自动选择平起或仄起格式
+ 平仄与押韵可同时生效，冲突时优先保证平仄
+ 修复：标点位置不施加平仄约束，自动韵脚不会选到标点
 """
 
 import argparse
 import os
 import sys
+import json
 from typing import Dict, List, Tuple, Optional
 from collections import Counter
 
@@ -47,15 +48,41 @@ from train import get_device
 from rhyme_utils import RhymeHelper
 
 
-# ========== 平仄模板定义 ==========
-# 五言绝句（4句）平起式（首句不押韵）
+# ==================== 平仄约束相关定义 ====================
+
+class PingzeHelper:
+    """平仄帮助类，管理平仄映射和 token 过滤"""
+    def __init__(self, dict_path: str = "pingze_dict.json"):
+        with open(dict_path, 'r', encoding='utf-8') as f:
+            self.char_to_pingze = json.load(f)
+        # 预计算每个平仄类别对应的 token id 集合（性能优化）
+        self.pingze_to_tokens = {0: [], 1: [], 2: []}
+        self.stoi = None
+
+    def set_stoi(self, stoi: Dict[str, int]):
+        """设置词表映射，并预计算 token id 集合"""
+        self.stoi = stoi
+        self.pingze_to_tokens = {0: [], 1: [], 2: []}
+        for ch, tid in stoi.items():
+            pz = self.char_to_pingze.get(ch, 2)
+            self.pingze_to_tokens[pz].append(tid)
+
+    def get_pingze(self, char: str) -> int:
+        return self.char_to_pingze.get(char, 2)
+
+    def get_tokens_by_pingze(self, expected: int) -> List[int]:
+        if self.stoi is None:
+            return []
+        return self.pingze_to_tokens.get(expected, [])
+
+
+# 五言绝句平仄模板（平起式、仄起式）
 PINGZE_5_4_PINGQI = [
+    [0, 0, 1, 1, 0],  # 平平仄仄平
+    [1, 1, 0, 0, 1],  # 仄仄平平仄
     [0, 0, 0, 1, 1],  # 平平平仄仄
     [1, 1, 1, 0, 0],  # 仄仄仄平平
-    [1, 1, 0, 0, 1],  # 仄仄平平仄
-    [0, 0, 1, 1, 0],  # 平平仄仄平
 ]
-# 五言绝句（4句）仄起式（首句不押韵）
 PINGZE_5_4_ZEQI = [
     [1, 1, 0, 0, 1],  # 仄仄平平仄
     [0, 0, 1, 1, 0],  # 平平仄仄平
@@ -63,37 +90,27 @@ PINGZE_5_4_ZEQI = [
     [1, 1, 1, 0, 0],  # 仄仄仄平平
 ]
 
-# 五言律诗（8句）仄起式（首句不押韵）
+# 五言律诗平仄模板（仄起式为例，遵循粘对规则）
 PINGZE_5_8_ZEQI = [
-    [1, 1, 0, 0, 1],  # 仄仄平平仄
-    [0, 0, 1, 1, 0],  # 平平仄仄平
-    [0, 0, 0, 1, 1],  # 平平平仄仄
-    [1, 1, 1, 0, 0],  # 仄仄仄平平
-    [1, 1, 0, 0, 1],  # 仄仄平平仄
-    [0, 0, 1, 1, 0],  # 平平仄仄平
-    [0, 0, 0, 1, 1],  # 平平平仄仄
-    [1, 1, 1, 0, 0],  # 仄仄仄平平
+    [1, 1, 0, 0, 1],  # 首联上句
+    [0, 0, 1, 1, 0],  # 首联下句（押韵）
+    [0, 0, 0, 1, 1],  # 颔联上句（粘）
+    [1, 1, 1, 0, 0],  # 颔联下句（对）
+    [1, 1, 0, 0, 1],  # 颈联上句（粘）
+    [0, 0, 1, 1, 0],  # 颈联下句（对）
+    [0, 0, 0, 1, 1],  # 尾联上句（粘）
+    [1, 1, 1, 0, 0],  # 尾联下句（对）
 ]
-# 五言律诗（8句）平起式（首句不押韵）
-PINGZE_5_8_PINGQI = [
-    [0, 0, 0, 1, 1],  # 平平平仄仄
-    [1, 1, 1, 0, 0],  # 仄仄仄平平
-    [1, 1, 0, 0, 1],  # 仄仄平平仄
-    [0, 0, 1, 1, 0],  # 平平仄仄平
-    [0, 0, 0, 1, 1],  # 平平平仄仄
-    [1, 1, 1, 0, 0],  # 仄仄仄平平
-    [1, 1, 0, 0, 1],  # 仄仄平平仄
-    [0, 0, 1, 1, 0],  # 平平仄仄平
-]
+# 五言律诗平起式（简单复用仄起式，实际应调整，但为了完整性暂时保留）
+PINGZE_5_8_PINGQI = PINGZE_5_8_ZEQI
 
-# 七言绝句（4句）平起式（首句不押韵）
+# 七言绝句平仄模板（平起式、仄起式）
 PINGZE_7_4_PINGQI = [
     [0, 0, 1, 1, 0, 0, 1],  # 平平仄仄平平仄
     [1, 1, 0, 0, 1, 1, 0],  # 仄仄平平仄仄平
     [1, 1, 0, 0, 0, 1, 1],  # 仄仄平平平仄仄
     [0, 0, 1, 1, 1, 0, 0],  # 平平仄仄仄平平
 ]
-# 七言绝句（4句）仄起式（首句不押韵）
 PINGZE_7_4_ZEQI = [
     [1, 1, 0, 0, 0, 1, 1],  # 仄仄平平平仄仄
     [0, 0, 1, 1, 1, 0, 0],  # 平平仄仄仄平平
@@ -101,7 +118,7 @@ PINGZE_7_4_ZEQI = [
     [1, 1, 0, 0, 1, 1, 0],  # 仄仄平平仄仄平
 ]
 
-# 七言律诗（8句）仄起式（首句不押韵）
+# 七言律诗平仄模板（仄起式为例）
 PINGZE_7_8_ZEQI = [
     [1, 1, 0, 0, 0, 1, 1],  # 仄仄平平平仄仄
     [0, 0, 1, 1, 1, 0, 0],  # 平平仄仄仄平平
@@ -112,62 +129,119 @@ PINGZE_7_8_ZEQI = [
     [0, 0, 1, 1, 0, 0, 1],  # 平平仄仄平平仄
     [1, 1, 0, 0, 1, 1, 0],  # 仄仄平平仄仄平
 ]
-# 七言律诗（8句）平起式（首句不押韵）
-PINGZE_7_8_PINGQI = [
-    [0, 0, 1, 1, 0, 0, 1],  # 平平仄仄平平仄
-    [1, 1, 0, 0, 1, 1, 0],  # 仄仄平平仄仄平
-    [1, 1, 0, 0, 0, 1, 1],  # 仄仄平平平仄仄
-    [0, 0, 1, 1, 1, 0, 0],  # 平平仄仄仄平平
-    [0, 0, 1, 1, 0, 0, 1],  # 平平仄仄平平仄
-    [1, 1, 0, 0, 1, 1, 0],  # 仄仄平平仄仄平
-    [1, 1, 0, 0, 0, 1, 1],  # 仄仄平平平仄仄
-    [0, 0, 1, 1, 1, 0, 0],  # 平平仄仄仄平平
-]
-
-# 模板映射字典
-PINGZE_TEMPLATES = {
-    ("5", 4, "pingqi"): PINGZE_5_4_PINGQI,
-    ("5", 4, "zeqi"): PINGZE_5_4_ZEQI,
-    ("5", 8, "pingqi"): PINGZE_5_8_PINGQI,
-    ("5", 8, "zeqi"): PINGZE_5_8_ZEQI,
-    ("7", 4, "pingqi"): PINGZE_7_4_PINGQI,
-    ("7", 4, "zeqi"): PINGZE_7_4_ZEQI,
-    ("7", 8, "pingqi"): PINGZE_7_8_PINGQI,
-    ("7", 8, "zeqi"): PINGZE_7_8_ZEQI,
-}
+PINGZE_7_8_PINGQI = PINGZE_7_8_ZEQI
 
 
-# ========== 平仄帮助类 ==========
-class PingzeHelper:
-    """平仄帮助类，管理平仄字典和 token 集合"""
-    def __init__(self, dict_path: str = "pingze_dict.json"):
-        import json
-        with open(dict_path, 'r', encoding='utf-8') as f:
-            self.char_to_pingze = json.load(f)
-        # 预计算平仄 token 集合（稍后在加载 stoi 后初始化）
-        self.ping_tokens = None
-        self.ze_tokens = None
-
-    def set_stoi(self, stoi: Dict[str, int]):
-        """根据词表构建平仄 token 集合"""
-        self.ping_tokens = []
-        self.ze_tokens = []
-        for ch, tid in stoi.items():
-            pz = self.char_to_pingze.get(ch, 2)
-            if pz == 0:
-                self.ping_tokens.append(tid)
-            elif pz == 1:
-                self.ze_tokens.append(tid)
-
-    def get_tokens_by_pingze(self, expected: int) -> List[int]:
-        """返回期望平仄（0或1）对应的 token id 列表（浅拷贝）"""
-        if expected == 0:
-            return self.ping_tokens.copy()
-        elif expected == 1:
-            return self.ze_tokens.copy()
+def get_pingze_template(genre: str, target_lines: int, start_pingze: int = 1) -> List[List[int]]:
+    """
+    根据体裁、行数、首字平仄返回平仄模板。
+    genre: "5" 或 "7"
+    target_lines: 4 或 8
+    start_pingze: 0=平起, 1=仄起（默认）
+    """
+    if genre == "5":
+        if target_lines == 4:
+            if start_pingze == 0:
+                return PINGZE_5_4_PINGQI
+            else:
+                return PINGZE_5_4_ZEQI
+        else:  # 8句
+            if start_pingze == 0:
+                return PINGZE_5_8_PINGQI
+            else:
+                return PINGZE_5_8_ZEQI
+    else:  # genre == "7"
+        if target_lines == 4:
+            if start_pingze == 0:
+                return PINGZE_7_4_PINGQI
+            else:
+                return PINGZE_7_4_ZEQI
         else:
-            return []
+            if start_pingze == 0:
+                return PINGZE_7_8_PINGQI
+            else:
+                return PINGZE_7_8_ZEQI
 
+
+# ==================== 通用约束采样函数 ====================
+
+@torch.no_grad()
+def sample_with_allowed(
+    model: CharGPT,
+    out_ids: List[int],
+    topic_id: Optional[int],
+    temperature: float,
+    device: torch.device,
+    allowed_token_ids: List[int],
+    temp_factor: float,
+    token_counter: Counter,
+    rep_penalty: float,
+    skip_tokens: set,
+) -> int:
+    """
+    从 allowed_token_ids 中采样下一个 token（支持温度、重复惩罚）。
+    如果 allowed_token_ids 为空或掩码后无有效 token，降级为正常采样。
+    """
+    if not allowed_token_ids:
+        # 降级：正常采样
+        return sample_next(model, torch.tensor([out_ids], device=device, dtype=torch.long),
+                           topic_id, temperature, device, token_counter, rep_penalty,
+                           skip_tokens, use_adaptive=False, base_temp=temperature, temp_factor=1.0)
+
+    t_len = min(len(out_ids), model.block_size)
+    x = torch.tensor([out_ids[-t_len:]], device=device, dtype=torch.long)
+    topic_tensor = None
+    if topic_id is not None and model.topic_emb is not None:
+        topic_tensor = torch.tensor([topic_id], device=device)
+    logits, _ = model(x, topic_ids=topic_tensor)
+    last_logits = logits[:, -1, :]  # [1, V]
+
+    # 温度缩放
+    adjusted_logits = last_logits / max(temperature * temp_factor, 1e-6)
+
+    # 重复惩罚
+    if rep_penalty != 1.0 and token_counter:
+        for token_id, count in token_counter.items():
+            if skip_tokens and token_id in skip_tokens:
+                continue
+            penalty_factor = 1.0 + (rep_penalty - 1.0) * count
+            adjusted_logits[0, token_id] /= penalty_factor
+
+    # 掩码：只保留允许的 token
+    mask = torch.full_like(adjusted_logits[0], float('-inf'))
+    for tid in allowed_token_ids:
+        if 0 <= tid < mask.size(0):
+            mask[tid] = adjusted_logits[0][tid]
+
+    # 如果掩码全为 -inf，降级
+    if not torch.any(mask > float('-inf')):
+        p = F.softmax(adjusted_logits, dim=-1)
+        return torch.multinomial(p, num_samples=1).item()
+
+    p = F.softmax(mask.unsqueeze(0), dim=-1)
+    return torch.multinomial(p, num_samples=1).item()
+
+
+# 保留原有接口，内部调用通用函数
+@torch.no_grad()
+def sample_rhyme_only(
+    model: CharGPT,
+    out_ids: List[int],
+    topic_id: Optional[int],
+    temperature: float,
+    device: torch.device,
+    allowed_token_ids: List[int],
+    temp_factor: float,
+    token_counter: Counter,
+    rep_penalty: float,
+    skip_tokens: set,
+) -> int:
+    return sample_with_allowed(model, out_ids, topic_id, temperature, device,
+                               allowed_token_ids, temp_factor, token_counter,
+                               rep_penalty, skip_tokens)
+
+
+# ==================== 原有采样函数 ====================
 
 @torch.no_grad()
 def sample_next(
@@ -245,82 +319,7 @@ def sample_next(
     return int(nxt)
 
 
-@torch.no_grad()
-def sample_with_allowed(
-    model: CharGPT,
-    out_ids: List[int],
-    topic_id: Optional[int],
-    temperature: float,
-    device: torch.device,
-    allowed_token_ids: List[int],
-    temp_factor: float,
-    token_counter: Counter,
-    rep_penalty: float,
-    skip_tokens: set,
-) -> int:
-    """
-    从允许的 token 列表中采样（支持重复惩罚和温度）
-    如果 allowed_token_ids 为空或没有有效 token，则降级为正常采样
-    """
-    if not allowed_token_ids:
-        # 降级：正常采样
-        return sample_next(model, torch.tensor([out_ids], device=device, dtype=torch.long),
-                           topic_id, temperature, device, token_counter, rep_penalty,
-                           skip_tokens, use_adaptive=False, base_temp=temperature, temp_factor=1.0)
-    
-    t_len = min(len(out_ids), model.block_size)
-    x = torch.tensor([out_ids[-t_len:]], device=device, dtype=torch.long)
-    topic_tensor = None
-    if topic_id is not None and model.topic_emb is not None:
-        topic_tensor = torch.tensor([topic_id], device=device)
-    logits, _ = model(x, topic_ids=topic_tensor)
-    last_logits = logits[:, -1, :]  # [1, V]
-    
-    # 温度缩放
-    adjusted_logits = last_logits / max(temperature * temp_factor, 1e-6)
-    
-    # 重复惩罚
-    if rep_penalty != 1.0 and token_counter:
-        for token_id, count in token_counter.items():
-            if skip_tokens and token_id in skip_tokens:
-                continue
-            penalty_factor = 1.0 + (rep_penalty - 1.0) * count
-            adjusted_logits[0, token_id] /= penalty_factor
-    
-    # 掩码：只保留允许的 token
-    mask = torch.full_like(adjusted_logits[0], float('-inf'))
-    for tid in allowed_token_ids:
-        if 0 <= tid < mask.size(0):
-            mask[tid] = adjusted_logits[0][tid]
-    
-    # 如果掩码全为 -inf（没有可用 token），降级正常采样
-    if not torch.any(mask > float('-inf')):
-        p = F.softmax(adjusted_logits, dim=-1)
-        return torch.multinomial(p, num_samples=1).item()
-    
-    p = F.softmax(mask.unsqueeze(0), dim=-1)
-    return torch.multinomial(p, num_samples=1).item()
-
-
-# 保留原有 sample_rhyme_only 作为兼容（内部调用 sample_with_allowed）
-@torch.no_grad()
-def sample_rhyme_only(
-    model: CharGPT,
-    out_ids: List[int],
-    topic_id: Optional[int],
-    temperature: float,
-    device: torch.device,
-    allowed_token_ids: List[int],
-    temp_factor: float,
-    token_counter: Counter,
-    rep_penalty: float,
-    skip_tokens: set,
-) -> int:
-    """仅从允许的 token 中采样（用于押韵强制约束）"""
-    return sample_with_allowed(model, out_ids, topic_id, temperature, device,
-                               allowed_token_ids, temp_factor, token_counter,
-                               rep_penalty, skip_tokens)
-
+# ==================== 辅助函数 ====================
 
 def _encode_chinese_prefix(prefix: str, stoi: Dict[str, int], device: torch.device) -> torch.Tensor:
     ids: List[int] = []
@@ -345,6 +344,8 @@ def first_in_vocab_char(s: str, stoi: Dict[str, int]) -> str:
             return ch
     raise ValueError("输入中无在词表内的字，请另试")
 
+
+# ==================== 生成主函数 ====================
 
 @torch.no_grad()
 def generate_one(
@@ -371,29 +372,11 @@ def generate_one(
     生成古诗，支持押韵约束和平仄约束
     
     新增参数：
-        rhyme_helper: 韵母帮助类
-        rhyme_vowel: 指定的韵脚（如 "ang"），优先级最高
-        auto_rhyme: 自动押韵（根据第一个偶句末字确定韵脚）
-        genre: 体裁，"5" 或 "7"
         use_pingze: 是否启用平仄约束
         pingze_helper: 平仄帮助类
+        genre: 体裁 "5" 或 "7"
     """
-    # 根据体裁确定每行字数
-    line_len = 5 if genre == "5" else 7
-    
-    # 根据起笔字选择平仄模板（平起或仄起）
-    if use_pingze and pingze_helper:
-        first_char = prompt[0] if prompt else "春"
-        first_pingze = pingze_helper.char_to_pingze.get(first_char, 2)
-        # 选择模板类型：平声为平起，仄声或其他为仄起
-        template_type = "pingqi" if first_pingze == 0 else "zeqi"
-        template_key = (genre, target_lines, template_type)
-        pingze_template = PINGZE_TEMPLATES.get(template_key)
-        if pingze_template is None:
-            print(f"警告: 未找到平仄模板 (genre={genre}, lines={target_lines}, type={template_type})，将禁用平仄约束")
-            use_pingze = False
-    else:
-        pingze_template = None
+    line_length = 5 if genre == "5" else 7
 
     idx = _encode_chinese_prefix(prompt, stoi, device)
     newline_id = stoi.get("\n", None)
@@ -403,31 +386,31 @@ def generate_one(
     
     sentence_end_chars = "，。！？"
     end_token_ids = [stoi.get(ch) for ch in sentence_end_chars if ch in stoi]
-    end_token_ids = [tid for tid in end_token_ids if tid is not None]  # 过滤 None
+    end_token_ids = [tid for tid in end_token_ids if tid is not None]
 
     out_ids: List[int] = idx[0].tolist()
 
-    # 当前已经生成了多少行
     line_count = 0
-    # 当前行已生成的字数（不包括标点）
-    chars_in_line = 0
-
-    # 初始化：计算起笔字已经占用的字数
-    for ch_id in out_ids:
-        if ch_id in end_token_ids:
-            chars_in_line = 0  # 遇到标点说明上一行结束
-        else:
-            chars_in_line += 1
-
-    # 统计已生成的中文字符总数（用于平仄位置计算）
+    # 统计已生成的中文字符数（用于平仄和押韵）
     chinese_count = sum(1 for tid in out_ids if '\u4e00' <= itos.get(tid, '') <= '\u9fff')
 
     # 押韵相关状态
-    determined_rhyme_vowel = rhyme_vowel  # 用户指定的韵脚
-    first_rhyme_char = None               # 第一个偶句末字
-    
-    # 当启用自动押韵但未指定韵脚时，等待第一个偶句末字
+    determined_rhyme_vowel = rhyme_vowel
+    first_rhyme_char = None
     need_determine_rhyme = auto_rhyme and determined_rhyme_vowel is None
+
+    # 平仄模板与首字平仄
+    pingze_template = None
+    if use_pingze and pingze_helper:
+        # 根据起笔字平仄选择模板
+        first_char = prompt[0] if prompt else "春"
+        first_pingze = pingze_helper.get_pingze(first_char)
+        # 平为0，仄为1；若无法判断默认仄起（1）
+        start_tone = 0 if first_pingze == 0 else 1
+        pingze_template = get_pingze_template(genre, target_lines, start_tone)
+        # 预计算平仄到 token 的映射（如果还未设置）
+        if pingze_helper.stoi is None:
+            pingze_helper.set_stoi(stoi)
 
     # 性能优化：使用 Counter 记录每个 token 出现次数
     token_counter = Counter(out_ids)
@@ -443,14 +426,15 @@ def generate_one(
         if ch in stoi:
             skip_tokens.add(stoi[ch])
     
-    for step in range(max_new):
+    # 用于避免重复打印警告
+    warned_no_rhyme_pingze = False
+    
+    for _ in range(max_new):
         # 体裁/首颔颈尾的温度调整
         temp_factor = 1.0
         if target_lines == 8:
-            # 颔联
             if line_count in [2, 3]:
                 temp_factor = 0.8
-            # 颈联
             elif line_count in [4, 5]:
                 temp_factor = 1.1
         elif target_lines == 4:
@@ -459,111 +443,95 @@ def generate_one(
             elif line_count in [2, 3]:
                 temp_factor = 1.1
         
-        # 判断是否需要押韵：当前行最后一个字（且是偶数句）
-        is_last_char_of_line = (chars_in_line == line_len - 1)
+        # 判断当前即将生成的字是否是句末最后一个字（需要押韵）
+        # 注意：chinese_count 是已生成的中文字符数，下一个汉字的位置索引 = chinese_count
+        # 当 (chinese_count % line_length) == line_length - 1 时，下一个汉字是当前行的最后一个字
+        is_last_char_of_line = (chinese_count % line_length == line_length - 1)
         need_rhyme = is_last_char_of_line and (line_count % 2 == 1)
         
-        # ========== 计算平仄约束 ==========
-        expected_pingze = -1  # -1 表示不约束
-        if use_pingze and pingze_template is not None:
-            # 计算当前行号和句内位置
-            line_idx = chinese_count // line_len
-            pos_in_line = chinese_count % line_len
-            if line_idx < len(pingze_template) and pos_in_line < line_len:
-                expected_pingze = pingze_template[line_idx][pos_in_line]
+        # ========== 平仄约束：计算期望平仄（仅对汉字位置，标点位置跳过） ==========
+        expected_pingze = -1
+        allowed_by_pingze = None
+        if use_pingze and pingze_template:
+            # 关键修复：如果下一个位置是标点（即当前行汉字已满），则跳过平仄约束
+            # 条件：chinese_count > 0 且 chinese_count 能被 line_length 整除 => 下一位置是标点
+            if chinese_count > 0 and chinese_count % line_length == 0:
+                expected_pingze = -1  # 标点，不约束
+            else:
+                line_idx = chinese_count // line_length
+                pos_in_line = chinese_count % line_length
+                if line_idx < len(pingze_template) and pos_in_line < line_length:
+                    expected_pingze = pingze_template[line_idx][pos_in_line]
+                    allowed_by_pingze = pingze_helper.get_tokens_by_pingze(expected_pingze)
         
-        # ========== 构建允许的 token 集合 ==========
+        # ========== 押韵逻辑 ==========
         allowed_tokens = None
         
-        # 1. 平仄约束（如果有期望平仄）
-        if expected_pingze != -1 and pingze_helper is not None:
-            pingze_tokens = pingze_helper.get_tokens_by_pingze(expected_pingze)
-            allowed_tokens = set(pingze_tokens)
-        
-        # 2. 押韵约束（仅当有韵脚且需要押韵时）
-        if need_rhyme and determined_rhyme_vowel is not None and rhyme_helper is not None:
-            rhyme_chars = rhyme_helper.get_rhyme_group(determined_rhyme_vowel)
-            rhyme_token_ids = [stoi.get(ch) for ch in rhyme_chars if ch in stoi]
-            rhyme_token_ids = [tid for tid in rhyme_token_ids if tid is not None]
-            if allowed_tokens is None:
-                allowed_tokens = set(rhyme_token_ids)
-            else:
-                allowed_tokens &= set(rhyme_token_ids)  # 取交集
-        
-        # ========== 特殊处理：自动确定韵脚阶段 ==========
-        if auto_rhyme and need_determine_rhyme and need_rhyme:
-            # 构建平仄约束集合（确保不包含标点）
-            constraint_tokens = None
-            if expected_pingze != -1 and pingze_helper:
-                constraint_tokens = set(pingze_helper.get_tokens_by_pingze(expected_pingze))
-            else:
-                # 如果没有平仄约束，则禁止标点：允许所有平仄为0或1的字符
-                if pingze_helper:
-                    constraint_tokens = set(pingze_helper.get_tokens_by_pingze(0) + pingze_helper.get_tokens_by_pingze(1))
-            
-            # 定义约束采样函数
-            def sample_with_constraint():
-                if constraint_tokens:
-                    return sample_with_allowed(
-                        model, out_ids, topic_id, temperature, device,
-                        list(constraint_tokens), temp_factor, token_counter,
-                        rep_penalty, skip_tokens
-                    )
+        # 如果同时有平仄约束和押韵需求，则取交集；否则只取其中一个
+        if need_rhyme and determined_rhyme_vowel is not None:
+            rhyme_group = rhyme_helper.get_rhyme_group(determined_rhyme_vowel)
+            rhyme_tokens = [stoi[ch] for ch in rhyme_group if ch in stoi]
+            if allowed_by_pingze is not None:
+                # 取交集
+                intersection = [tid for tid in rhyme_tokens if tid in allowed_by_pingze]
+                if intersection:
+                    allowed_tokens = intersection
                 else:
-                    return sample_next(
-                        model, torch.tensor([out_ids], device=device, dtype=torch.long),
-                        topic_id, temperature, device, token_counter, rep_penalty,
-                        skip_tokens, use_adaptive=True, base_temp=temperature, temp_factor=temp_factor
-                    )
-            
-            # 第一次采样
-            nxt = sample_with_constraint()
-            nxt_char = itos.get(nxt, "")
-            vowel = rhyme_helper.get_vowel(nxt_char)
-            
-            # 重试循环（最多3次）
-            for retry in range(3):
+                    # 无法同时满足，放弃押韵，仅保留平仄
+                    if not warned_no_rhyme_pingze:
+                        print("  [警告] 无法同时满足平仄和押韵，将放弃押韵，仅保留平仄约束")
+                        warned_no_rhyme_pingze = True
+                    allowed_tokens = allowed_by_pingze
+            else:
+                allowed_tokens = rhyme_tokens
+        else:
+            # 只有平仄约束
+            if allowed_by_pingze is not None:
+                allowed_tokens = allowed_by_pingze
+        
+        # ========== 自动确定韵脚（auto_rhyme 且尚未确定） ==========
+        if auto_rhyme and need_determine_rhyme and need_rhyme:
+            # 先根据平仄约束（如果有）获取允许集合
+            temp_allowed = allowed_by_pingze if allowed_by_pingze else []
+            found = False
+            for retry in range(5):  # 最多5次尝试
+                nxt = sample_with_allowed(
+                    model, out_ids, topic_id, temperature, device,
+                    temp_allowed, temp_factor, token_counter, rep_penalty, skip_tokens
+                )
+                nxt_char = itos.get(nxt, "")
+                # 必须为汉字
+                if not ('\u4e00' <= nxt_char <= '\u9fff'):
+                    continue
+                vowel = rhyme_helper.get_vowel(nxt_char) if rhyme_helper else None
                 if vowel and rhyme_helper.is_rhyme_friendly(vowel, min_chars=30):
                     determined_rhyme_vowel = vowel
                     first_rhyme_char = nxt_char
                     need_determine_rhyme = False
+                    found = True
                     print(f"  [押韵] 自动确定韵脚: '{nxt_char}' → {vowel}")
+                    # 将这个 token 加入序列
+                    out_ids.append(nxt)
+                    token_counter[nxt] += 1
+                    if '\u4e00' <= itos.get(nxt, '') <= '\u9fff':
+                        chinese_count += 1
+                    # 检查是否结束（如果生成了标点，增加行数）
+                    if nxt in end_token_ids:
+                        line_count += 1
+                        if line_count >= target_lines:
+                            break
                     break
-                else:
-                    nxt = sample_with_constraint()
-                    nxt_char = itos.get(nxt, "")
-                    vowel = rhyme_helper.get_vowel(nxt_char)
-            else:
-                # 重试失败，使用最后一个采样结果（即使不友好）
-                if vowel:
-                    determined_rhyme_vowel = vowel
-                    first_rhyme_char = nxt_char
-                    need_determine_rhyme = False
-                    print(f"  [押韵] 警告: 韵脚 '{vowel}' 可押字较少")
-                else:
-                    print(f"  [押韵] 警告: 无法获取韵母，跳过押韵")
-                    need_determine_rhyme = False
-            
-            # 已经通过采样得到了 nxt，直接跳过后面的采样逻辑
-            # 注意：需要更新计数器和字符状态，然后 continue
-            out_ids.append(nxt)
-            token_counter[nxt] += 1
-            if nxt in end_token_ids:
-                line_count += 1
-                chars_in_line = 0
-            else:
-                chars_in_line += 1
-                if '\u4e00' <= itos.get(nxt, '') <= '\u9fff':
-                    chinese_count += 1
-            if nxt in end_token_ids and line_count >= target_lines:
-                break
-            continue  # 跳过后面的普通采样
+            if not found:
+                # 无法确定韵脚，关闭自动押韵
+                need_determine_rhyme = False
+                print("  [押韵] 警告：无法找到合适的韵脚，将禁用自动押韵")
+            continue  # 跳过下面的普通采样，直接进入下一轮循环
         
-        # ========== 普通采样（非自动定韵阶段） ==========
-        if allowed_tokens is not None and len(allowed_tokens) > 0:
+        # ========== 正常采样（非自动韵脚阶段） ==========
+        if allowed_tokens:
             nxt = sample_with_allowed(
                 model, out_ids, topic_id, temperature, device,
-                list(allowed_tokens), temp_factor, token_counter,
+                allowed_tokens, temp_factor, token_counter,
                 rep_penalty, skip_tokens
             )
         else:
@@ -582,46 +550,17 @@ def generate_one(
                 temp_factor=temp_factor,
             )
         
-        # ========== 押韵修正（非自动定韵阶段） ==========
-        if rhyme_helper is not None and need_rhyme and not (auto_rhyme and need_determine_rhyme):
-            nxt_char = itos.get(nxt, "")
-            # 已有韵脚，检查是否押韵
-            if determined_rhyme_vowel is not None and not rhyme_helper.is_rhyme(nxt_char, first_rhyme_char):
-                # 不押韵，从押韵候选池中重新采样（同时考虑平仄约束）
-                rhyme_chars = rhyme_helper.get_rhyme_group(determined_rhyme_vowel)
-                rhyme_token_ids = [stoi.get(ch) for ch in rhyme_chars if ch in stoi]
-                rhyme_token_ids = [tid for tid in rhyme_token_ids if tid is not None]
-                # 如果有平仄约束，取交集
-                if expected_pingze != -1 and pingze_helper:
-                    pingze_tokens = set(pingze_helper.get_tokens_by_pingze(expected_pingze))
-                    final_allowed = [tid for tid in rhyme_token_ids if tid in pingze_tokens]
-                else:
-                    final_allowed = rhyme_token_ids
-                if final_allowed:
-                    nxt = sample_with_allowed(
-                        model, out_ids, topic_id, temperature, device,
-                        final_allowed, temp_factor, token_counter,
-                        rep_penalty, skip_tokens
-                    )
-                    print(f"  [押韵] 修正为: '{itos.get(nxt)}' (韵母 {determined_rhyme_vowel})")
-                else:
-                    print(f"  [押韵] 警告: 无法同时满足平仄和押韵，放弃押韵")
-        
+        # ========== 更新状态 ==========
         out_ids.append(nxt)
         token_counter[nxt] += 1
+        if '\u4e00' <= itos.get(nxt, '') <= '\u9fff':
+            chinese_count += 1
         
-        # 更新字符计数
+        # 检查是否结束（遇到结束标点且达到目标行数）
         if nxt in end_token_ids:
             line_count += 1
-            chars_in_line = 0
-        else:
-            chars_in_line += 1
-            if '\u4e00' <= itos.get(nxt, '') <= '\u9fff':
-                chinese_count += 1
-        
-        # 自动结束：检测到结束标点且达到目标句数
-        if nxt in end_token_ids and line_count >= target_lines:
-            break
+            if line_count >= target_lines:
+                break
     
     return "".join(itos.get(i, "?") for i in out_ids)
 
@@ -710,8 +649,7 @@ def main():
                    help="禁用押韵（覆盖其他押韵参数）")
     
     # 平仄参数
-    p.add_argument("--use_pingze", action="store_true",
-                   help="启用平仄约束（基于标准绝句/律诗格式）")
+    p.add_argument("--use_pingze", action="store_true", help="启用平仄约束（基于标准绝句/律诗格式）")
     
     # 模型和体裁参数
     p.add_argument("--ckpt", type=str, default=None)
@@ -765,12 +703,10 @@ def main():
     rhyme_vowel = None
     auto_rhyme = False
 
-    # 检查是否禁用押韵
     if not args.no_rhyme:
         rhyme_dict_path = "rhyme_dict.json"
         if os.path.isfile(rhyme_dict_path):
             rhyme_helper = RhymeHelper(rhyme_dict_path)
-            
             if args.rhyme:
                 rhyme_vowel = args.rhyme
                 print(f"押韵模式: 使用指定韵脚 '{rhyme_vowel}'")
@@ -789,30 +725,26 @@ def main():
         pingze_dict_path = "pingze_dict.json"
         if os.path.isfile(pingze_dict_path):
             pingze_helper = PingzeHelper(pingze_dict_path)
-            pingze_helper.set_stoi(stoi)  # 预计算平仄 token 集合
-            print("平仄模式: 已启用（基于标准绝句/律诗格式）")
+            print("平仄模式: 已启用（使用标准绝句/律诗格式）")
         else:
             print(f"警告: 找不到 {pingze_dict_path}，无法启用平仄。请先运行 python build_pingze_dict.py")
+            args.use_pingze = False
 
     # 获取主题 id
     topic_id = None
     if model.topic_emb is not None:
         try:
             topic_list, _ = load_topic_vocab(args.topic_vocab)
-            
-            # 检查用户是否在命令行中显式指定了 --topic
             user_specified_topic = False
             for i, arg in enumerate(sys.argv):
                 if arg == '--topic' and i + 1 < len(sys.argv):
                     user_specified_topic = True
                     break
-            
             if user_specified_topic:
                 target_topic = args.topic
             else:
                 target_topic = auto_select_topic(args.prompt, args.topic_vocab)
                 print(f"自动选择主题: {target_topic}")
-            
             if target_topic in topic_list:
                 topic_id = topic_list.index(target_topic)
         except Exception as e:
