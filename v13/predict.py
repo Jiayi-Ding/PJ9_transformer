@@ -477,11 +477,11 @@ def generate_one(
                 if intersection:
                     allowed_tokens = intersection
                 else:
-                    # 无法同时满足，放弃押韵，仅保留平仄
+                    # 无法同时满足，放弃平仄，仅保留押韵（押韵优先级高于平仄）
                     if not warned_no_rhyme_pingze:
-                        print("  [警告] 无法同时满足平仄和押韵，将放弃押韵，仅保留平仄约束")
+                        print("  [警告] 无法同时满足平仄和押韵，将放弃平仄，仅保留押韵约束")
                         warned_no_rhyme_pingze = True
-                    allowed_tokens = allowed_by_pingze
+                    allowed_tokens = rhyme_tokens
             else:
                 allowed_tokens = rhyme_tokens
         else:
