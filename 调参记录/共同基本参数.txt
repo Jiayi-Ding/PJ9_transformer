@@ -1,0 +1,10 @@
+d_model		256
+n_layer		4
+n_head		8
+d_ff			1024
+block_size		128
+dropout		0.1
+learning_rate	3e-4
+warm up比例	0.1
+grad_clip		1.0
+--train_num_samples 150000
