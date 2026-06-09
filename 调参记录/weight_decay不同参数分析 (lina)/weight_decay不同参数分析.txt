@@ -1,0 +1,12 @@
+!python train.py --genre 5(7) --use_topic --epochs 6 --batch_size 32 \
+    --block_size 128 --d_model 256 --n_layer 4 --n_head 8 --d_ff 1024 \
+    --dropout 0.2 --lr 3e-4 \
+    --train_num_samples 150000 \
+
+weight_decay ：0.0	   0.001      0.01      0.05      0.10
+
+发现，五言和七言的 val loss 几乎不受 weight_decay 强度的影响，在第 6 个 Epoch 结束时，五言 val loss 始终稳定在 4.03 附近，七言 val loss 始终稳定在 4.31 附近，全程未出现反弹抬头迹象。与之相对，随着 weight_decay 变小，控制参数限制放开，train loss 呈现逐渐减小并向下超越 val loss 的趋势，模型开始表现出过拟合的演进倾向。
+
+初步结论：适当增大 weight_decay（L2 正则化）能够对权重的激进更新施加有效约束，防止模型在训练中后期盲目拟合训练集；然而在当前短周期（6 Epochs）训练下，由于模型整体处于欠拟合向过拟合演进的极早期阶段，过大的 weight_decay 无法带来泛化性能的提升，反而会变成“无效惩罚”，压制模型的表达上限，导致训练效率变慢（例如当 weight_decay = 0.10 时，训练初期的起始 train loss 明显偏高，且收敛速度受到明显压制）。
+
+权衡 “抑制过拟合潜能” 和 “防止模型表达能力受压制” 两个因素，认为上述参数组合下，weight_decay = 0.01 是最优参数，这能让模型在保持良好泛化间隙的同时，充分释放网络结构的拟合潜力。
