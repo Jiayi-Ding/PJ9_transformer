@@ -166,6 +166,7 @@ def get_pingze_template(genre: str, target_lines: int, start_pingze: int = 1) ->
 # ==================== 通用约束采样函数 ====================
 
 @torch.no_grad()
+
 def sample_with_allowed(
     model: CharGPT,
     out_ids: List[int],
@@ -177,13 +178,13 @@ def sample_with_allowed(
     token_counter: Counter,
     rep_penalty: float,
     skip_tokens: set,
+    used_rhyme_chars: set = None,  # 新增：记录已使用的韵脚字
 ) -> int:
     """
-    从 allowed_token_ids 中采样下一个 token（支持温度、重复惩罚）。
-    如果 allowed_token_ids 为空或掩码后无有效 token，降级为正常采样。
+    从 allowed_token_ids 中采样下一个 token
+    used_rhyme_chars: 已经作为韵脚使用过的字符集合（禁止重复）
     """
     if not allowed_token_ids:
-        # 降级：正常采样
         return sample_next(model, torch.tensor([out_ids], device=device, dtype=torch.long),
                            topic_id, temperature, device, token_counter, rep_penalty,
                            skip_tokens, use_adaptive=False, base_temp=temperature, temp_factor=1.0)
@@ -194,9 +195,8 @@ def sample_with_allowed(
     if topic_id is not None and model.topic_emb is not None:
         topic_tensor = torch.tensor([topic_id], device=device)
     logits, _ = model(x, topic_ids=topic_tensor)
-    last_logits = logits[:, -1, :]  # [1, V]
+    last_logits = logits[:, -1, :]
 
-    # 温度缩放
     adjusted_logits = last_logits / max(temperature * temp_factor, 1e-6)
 
     # 重复惩罚
@@ -207,15 +207,22 @@ def sample_with_allowed(
             penalty_factor = 1.0 + (rep_penalty - 1.0) * count
             adjusted_logits[0, token_id] /= penalty_factor
 
-    # 掩码：只保留允许的 token
+    # 过滤允许的 token
     mask = torch.full_like(adjusted_logits[0], float('-inf'))
     for tid in allowed_token_ids:
+        # 【关键修改】如果是韵脚字且已经用过了，跳过
+        if used_rhyme_chars and tid in used_rhyme_chars:
+            continue
         if 0 <= tid < mask.size(0):
             mask[tid] = adjusted_logits[0][tid]
 
-    # 如果掩码全为 -inf，降级
     if not torch.any(mask > float('-inf')):
-        p = F.softmax(adjusted_logits, dim=-1)
+        # 降级：忽略 used_rhyme_chars 限制
+        mask2 = torch.full_like(adjusted_logits[0], float('-inf'))
+        for tid in allowed_token_ids:
+            if 0 <= tid < mask2.size(0):
+                mask2[tid] = adjusted_logits[0][tid]
+        p = F.softmax(mask2.unsqueeze(0), dim=-1)
         return torch.multinomial(p, num_samples=1).item()
 
     p = F.softmax(mask.unsqueeze(0), dim=-1)
@@ -376,6 +383,8 @@ def generate_one(
         pingze_helper: 平仄帮助类
         genre: 体裁 "5" 或 "7"
     """
+
+
     line_length = 5 if genre == "5" else 7
 
     idx = _encode_chinese_prefix(prompt, stoi, device)
@@ -393,6 +402,8 @@ def generate_one(
     line_count = 0
     # 统计已生成的中文字符数（用于平仄和押韵）
     chinese_count = sum(1 for tid in out_ids if '\u4e00' <= itos.get(tid, '') <= '\u9fff')
+
+    used_rhyme_chars = set()  # 【新增】记录已经用作韵脚的字（token id）
 
     # 押韵相关状态
     determined_rhyme_vowel = rhyme_vowel
@@ -470,7 +481,20 @@ def generate_one(
         # 如果同时有平仄约束和押韵需求，则取交集；否则只取其中一个
         if need_rhyme and determined_rhyme_vowel is not None:
             rhyme_group = rhyme_helper.get_rhyme_group(determined_rhyme_vowel)
-            rhyme_tokens = [stoi[ch] for ch in rhyme_group if ch in stoi]
+
+            # 【修改后】排除已经使用过的韵脚字
+            rhyme_tokens = []
+            for ch in rhyme_group:
+                if ch in stoi:
+                    tid = stoi[ch]
+                    # 跳过已经用作韵脚的字
+                    if tid not in used_rhyme_chars:
+                        rhyme_tokens.append(tid)
+            
+            # 如果可用的韵脚字太少，给出警告
+            if len(rhyme_tokens) < 3:
+                print(f"  [警告] 韵母 '{determined_rhyme_vowel}' 只剩 {len(rhyme_tokens)} 个可用字")
+
             if allowed_by_pingze is not None:
                 # 取交集
                 intersection = [tid for tid in rhyme_tokens if tid in allowed_by_pingze]
@@ -532,7 +556,8 @@ def generate_one(
             nxt = sample_with_allowed(
                 model, out_ids, topic_id, temperature, device,
                 allowed_tokens, temp_factor, token_counter,
-                rep_penalty, skip_tokens
+                rep_penalty, skip_tokens,
+                used_rhyme_chars=used_rhyme_chars if need_rhyme else None,  # 【新增】
             )
         else:
             # 无约束，正常采样
@@ -553,9 +578,21 @@ def generate_one(
         # ========== 更新状态 ==========
         out_ids.append(nxt)
         token_counter[nxt] += 1
+
+        nxt_char = itos.get(nxt, "")  # 【新增】获取字符
+
         if '\u4e00' <= itos.get(nxt, '') <= '\u9fff':
             chinese_count += 1
         
+        # 【新增】如果这是句末押韵位置，且确实是韵脚字，记录下来
+        if need_rhyme and determined_rhyme_vowel:
+            # 检查这个字是否属于当前韵母组
+            rhyme_group = rhyme_helper.get_rhyme_group(determined_rhyme_vowel)
+            if nxt_char in rhyme_group:
+                used_rhyme_chars.add(nxt)  # 记录 token id
+                # 可选：打印调试信息
+                # print(f"  [押韵] 已使用韵脚字: '{nxt_char}'")
+
         # 检查是否结束（遇到结束标点且达到目标行数）
         if nxt in end_token_ids:
             line_count += 1
