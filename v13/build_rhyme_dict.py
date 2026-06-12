@@ -3,6 +3,7 @@
 """
 构建汉字 → 韵母 映射表
 基于 pypinyin 库，将汉字转换为拼音后提取韵母
+
 运行方式：python build_rhyme_dict.py
 输出：rhyme_dict.json
 
