@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-构建汉字 → 平仄 映射表（0=平，1=仄，2=其他），使用三级回退策略确保平仄分类：
-    1、基于平水韵库 pingshui_rhyme，利用中古音韵进行平仄分类。
-    2、对于简体字无法识别的情况，先转换为繁体字再尝试分类；
-    3、若仍然失败，则使用拼音法（普通话声调）作为最终兜底。
+"""生成词表汉字平仄映射表的工具模块。
 
-运行方式：python build_pingze_dict.py
-输出：pingze_dict.json
-
-依赖：pip install pingshui_rhyme opencc-python-reimplemented pypinyin
-注意：需在 prepare_data.py 生成 vocab.json 之后运行。
+本模块读取 prepare_data.py 生成的 vocab.json，通过拼音与平水韵分类器
+推断每个汉字的平仄属性，并保存为 pingze_dict.json。
+v13 相较于 v1 增加了繁体字 fallback 与拼音兜底机制，提升了字表覆盖率。
 """
 
 import json
@@ -34,14 +28,14 @@ except ImportError:
     print("错误：请先安装 pypinyin：pip install pypinyin", file=sys.stderr)
     sys.exit(1)
 
-# 初始化繁简转换器（简→繁）
 cc_s2t = OpenCC('s2t')
 
-
 def get_pingze_by_pinyin(char: str) -> int:
+    """通过拼音声调推断汉字平仄。
+
+    如果字符不是汉字或拼音解析失败，则返回 2 表示未知。
     """
-    使用拼音法判断平仄（普通话声调）：1/2声→平(0)，3/4声→仄(1)，其他→2
-    """
+
     if not ('\u4e00' <= char <= '\u9fff'):
         return 2
     try:
@@ -56,16 +50,8 @@ def get_pingze_by_pinyin(char: str) -> int:
         pass
     return 2
 
-
 def get_pingze_with_fallback(ch: str, classifier: PingZeClassifier) -> int:
-    """
-    三级回退：
-    1. 直接使用平水韵分类器（简体）
-    2. 转换为繁体后再次尝试
-    3. 使用拼音法（普通话声调）兜底
-    返回 0(平), 1(仄), 2(其他)
-    """
-    # 第一级：简体直接分类
+
     try:
         result = classifier.classify(ch)
         if result and len(result) > 0:
@@ -73,11 +59,10 @@ def get_pingze_with_fallback(ch: str, classifier: PingZeClassifier) -> int:
                 return 0
             elif result[0] == 'ze':
                 return 1
-            # 如果是 'unknown' 或其他，继续下一级
+
     except Exception:
         pass
 
-    # 第二级：转换为繁体再分类
     try:
         trad = cc_s2t.convert(ch)
         if trad and trad != ch:
@@ -90,15 +75,17 @@ def get_pingze_with_fallback(ch: str, classifier: PingZeClassifier) -> int:
     except Exception:
         pass
 
-    # 第三级：拼音法兜底
     return get_pingze_by_pinyin(ch)
 
-
 def main() -> None:
+    """从词表加载字符并生成平仄映射表。
+
+    通过直接分类、繁体字符转换后分类、拼音推断三层 fallback，尽量覆盖词表中所有汉字。
+    生成结果包括平声、仄声和未知类别统计，并写入 pingze_dict.json。
+    """
     vocab_path = "vocab.json"
     output_path = "pingze_dict.json"
 
-    # 加载词表
     try:
         with open(vocab_path, 'r', encoding='utf-8') as f:
             vocab = json.load(f)
@@ -116,16 +103,15 @@ def main() -> None:
 
     print(f"正在处理 {len(stoi)} 个字符...")
 
-    # 初始化平水韵分类器
     classifier = PingZeClassifier()
 
     pingze_dict = {}
     stats = {0: 0, 1: 0, 2: 0}
-    # 记录不同回退级别的统计（可选）
+
     fallback_stats = {"direct": 0, "trad": 0, "pinyin": 0}
 
     for idx, ch in enumerate(stoi.keys()):
-        # 1. 先尝试直接分类（简体）
+
         try:
             result = classifier.classify(ch)
             if result and len(result) > 0 and result[0] in ('ping', 'ze'):
@@ -139,7 +125,6 @@ def main() -> None:
         except Exception:
             pass
 
-        # 2. 繁体转换尝试
         try:
             trad = cc_s2t.convert(ch)
             if trad and trad != ch:
@@ -155,7 +140,6 @@ def main() -> None:
         except Exception:
             pass
 
-        # 3. 拼音法兜底
         pingze = get_pingze_by_pinyin(ch)
         fallback_stats["pinyin"] += 1
         pingze_dict[ch] = pingze
@@ -164,7 +148,6 @@ def main() -> None:
         if (idx + 1) % 1000 == 0:
             print(f"  已处理 {idx + 1} / {len(stoi)} 个字符...")
 
-    # 打印最终分类情况
     print(f"平声字: {stats[0]}, 仄声字: {stats[1]}, 其他: {stats[2]}")
     print(f"分类方式统计: 直接匹配={fallback_stats['direct']}, 繁体转换后匹配={fallback_stats['trad']}, 拼音兜底={fallback_stats['pinyin']}")
 
@@ -172,7 +155,6 @@ def main() -> None:
         json.dump(pingze_dict, f, ensure_ascii=False, indent=2)
 
     print(f"平仄映射表已保存至: {output_path}")
-
 
 if __name__ == "__main__":
     main()

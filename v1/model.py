@@ -1,23 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Transformer 语言模型定义模块。
-
-本模块实现了字符级 GPT 风格模型，用于诗歌生成。
-包含因果自注意力、前馈网络、LayerNorm、位置 embedding 以及可选主题 embedding。
 """
+字符级 Decoder-only 语言模型（GPT 式）。
+用多头因果自注意力 + FFN 堆叠；**未使用** nn.Transformer 封装。
 
+待补全项：CausalSelfAttention.forward 与 FeedForward（__init__ + forward），详见《实验指导》。
+"""
 from typing import Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class CausalSelfAttention(nn.Module):
-    """因果自注意力模块，保证模型只能看到当前词及之前词。
-
-    该模块实现多头注意力，并在注意力权重上应用上三角遮罩，
-    防止模型在生成时访问未来位置的信息。
-    """
-
     def __init__(
         self,
         d_model: int,
@@ -38,38 +33,73 @@ class CausalSelfAttention(nn.Module):
         self.block_size = block_size
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """执行自注意力计算，返回与输入同形状的上下文特征。
-
-        参数:
-          x: 形状为 (B, T, C) 的输入特征张量。
-        返回:
-          形状为 (B, T, C) 的输出特征。
         """
+        x: (B, T, C)，C == d_model。
+        需实现：多头 Q/K/V → 缩放点积注意力 → 因果掩码（不能看到未来位置）→ softmax →
+        与 V 相乘 → 合并多头 → 输出线性层。
+
+        提示：
+        - 注意力 logits 在 **d_head** 维度上按 sqrt(d_head) 缩放。
+        - 因果：位置 i 的 query 不能看到 key 位置 j>i；可用上三角为 True 的 bool 与 masked_fill(..., -inf)，
+          在最后一维上 softmax 后禁止位置为 0 概率，而非 NaN（注意 -inf 经 softmax 为 0）。
+        """
+
         B, T, C = x.size()
-        q = self.w_q(x)
+        # 1. 投影
+        q = self.w_q(x)  # (B, T, C)
         k = self.w_k(x)
         v = self.w_v(x)
-        # 拆分头数并转换形状为 (B, n_head, T, d_head)
-        q = q.view(B, T, self.n_head, self.d_head).transpose(1, 2)
+        # 2. 拆头
+        q = q.view(B, T, self.n_head, self.d_head).transpose(1, 2)  # (B, nH, T, dH)
         k = k.view(B, T, self.n_head, self.d_head).transpose(1, 2)
         v = v.view(B, T, self.n_head, self.d_head).transpose(1, 2)
-        att = (q @ k.transpose(-2, -1)) * (1.0 / (self.d_head ** 0.5))
+        # 3. 缩放点积
+        att = (q @ k.transpose(-2, -1)) * (1.0 / (self.d_head ** 0.5))  # (B, nH, T, T)
+        # 4. 因果掩码
         mask = torch.triu(torch.ones(T, T, device=x.device), diagonal=1).bool()
-        # 使用上三角掩码屏蔽未来位置，保证因果生成
         att = att.masked_fill(mask[None, None, :, :], float('-inf'))
+        # 5. softmax + dropout
         att = F.softmax(att, dim=-1)
         att = self.dropout(att)
-        y = att @ v
+        # 6. 加权V
+        y = att @ v  # (B, nH, T, dH)
+        # 7. 合并头
         y = y.transpose(1, 2).contiguous().view(B, T, C)
+        # 8. 输出投影
         y = self.w_o(y)
         return y
+        # ========== 在下方补全；完成后删除本行 raise ==========
+        # raise NotImplementedError("请补全 CausalSelfAttention.forward（手搓缩放点积 + 因果下三角掩码）")
+
+        # 实现提示（可删，实现后请去掉不会被执行到的死代码/占位注释）：
+        # b, t, c = x.size()
+        # q, k, v 由 self.w_q / w_k / w_v 得到，再 view 为 (B, n_head, T, d_head)
+        # att = (q @ k^T) / sqrt(self.d_head)
+        # 构造 (T, T) 的因果上三角（或对 j>i 的掩码）并 masked_fill
+        # att = dropout(softmax(att, dim=-1))；y = att @ v
+        # y: (B, n_head, T, d_head) → 合并为 (B, T, C) 后经 self.w_o
+
 
 class FeedForward(nn.Module):
-    """Transformer 中的前馈网络子层。
-
-    使用两层线性网络与 GELU 激活，以增强模型的非线性表达能力。
+    """
+    位置前馈子层：将每个位置的 d_model 维向量先扩到 d_ff，经 GELU 再压回 d_model，并带 Dropout。
+    与 Transformer 块中残差、LayerNorm 的配合在 TransformerBlock 里已完成，此处只实现「两路线性 + 非线性」。
     """
 
+    # def __init__(self, d_model: int, d_ff: int, dropout: float) -> None:
+    #     super().__init__()
+    #     self.d_model = d_model
+    #     self.d_ff = d_ff
+    #     self.dropout_p = float(dropout)
+    #     # ========== 在下方注册子层（如两个 nn.Linear、GELU、nn.Dropout），或 nn.Sequential；补全后删除下一行 ==========
+    #     raise NotImplementedError("请补全 FeedForward.__init__（d_model→d_ff→GELU→d_model，并带 Dropout）")
+
+    # def forward(self, x: torch.Tensor) -> torch.Tensor:
+    #     """
+    #     x: (B, T, d_model)，返回 (B, T, d_model)。
+    #     """
+    #     # ========== 在下方补全；补全后删除下一行 ==========
+    #     raise NotImplementedError("请补全 FeedForward.forward")
     def __init__(self, d_model: int, d_ff: int, dropout: float) -> None:
         super().__init__()
         self.net = nn.Sequential(
@@ -83,9 +113,8 @@ class FeedForward(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
-class TransformerBlock(nn.Module):
-    """单个 Transformer 块，包括自注意力、前馈网络与残差连接。"""
 
+class TransformerBlock(nn.Module):
     def __init__(self, d_model: int, n_head: int, block_size: int, d_ff: int, dropout: float) -> None:
         super().__init__()
         self.ln1 = nn.LayerNorm(d_model)
@@ -98,13 +127,8 @@ class TransformerBlock(nn.Module):
         x = x + self.ff(self.ln2(x))
         return x
 
+
 class CharGPT(nn.Module):
-    """字符级 GPT 模型，用于古诗生成。
-
-    模型由 token embedding、位置 embedding、可选主题 embedding、
-    多层 Transformer Block、LayerNorm 及线性输出层组成。
-    """
-
     def __init__(
         self,
         vocab_size: int,
@@ -114,29 +138,20 @@ class CharGPT(nn.Module):
         n_layer: int = 4,
         d_ff: int = 1024,
         dropout: float = 0.1,
-        num_topics: int = 0,
     ) -> None:
         super().__init__()
         self.vocab_size = vocab_size
         self.block_size = block_size
         self.d_model = d_model
-        self.num_topics = num_topics
-
         self.tok_emb = nn.Embedding(vocab_size, d_model)
         self.pos_emb = nn.Parameter(torch.zeros(1, block_size, d_model))
-
-        self.topic_emb = None
-        if num_topics > 0:
-            self.topic_emb = nn.Embedding(num_topics, d_model)
-            torch.nn.init.normal_(self.topic_emb.weight, mean=0.0, std=0.01)
-
         self.drop = nn.Dropout(dropout)
         self.blocks = nn.ModuleList(
             [TransformerBlock(d_model, n_head, block_size, d_ff, dropout) for _ in range(n_layer)]
         )
         self.ln_f = nn.LayerNorm(d_model)
         self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
-
+        # 权重共享（常见技巧，可注释掉）
         self.lm_head.weight = self.tok_emb.weight
         self.apply(self._init_weights)
 
@@ -147,43 +162,15 @@ class CharGPT(nn.Module):
         if isinstance(m, nn.Linear) and m.bias is not None:
             torch.nn.init.zeros_(m.bias)
 
-    def forward(
-        self,
-        idx: torch.Tensor,
-        targets: Optional[torch.Tensor] = None,
-        topic_ids: Optional[torch.Tensor] = None,
-    ):
-        """前向计算。
-
-        参数:
-          idx: 输入 token id 张量，形状 (B, T)。
-          targets: 可选目标 token id 張量，用于计算交叉熵损失。
-          topic_ids: 可选主题 id 张量，用于叠加主题 embedding。
-        返回:
-          logits: 形状 (B, T, vocab_size) 的预测得分。
-          loss: 可选交叉熵损失。
-        """
-
+    def forward(self, idx: torch.Tensor, targets: Optional[torch.Tensor] = None):
         b, t = idx.size()
         assert t <= self.block_size, f"长度 {t} 超过 block_size {self.block_size}"
-
         x = self.tok_emb(idx) + self.pos_emb[:, :t, :]
-
-        if self.topic_emb is not None and topic_ids is not None:
-            if topic_ids.dim() == 1:
-                topic_emb = self.topic_emb(topic_ids).unsqueeze(1)
-                x = x + topic_emb
-            else:
-                topic_emb = self.topic_emb(topic_ids)
-                x = x + topic_emb
-
         x = self.drop(x)
-
         for blk in self.blocks:
             x = blk(x)
         x = self.ln_f(x)
-        logits = self.lm_head(x)
-
+        logits = self.lm_head(x)  # (B, T, V)
         loss = None
         if targets is not None:
             loss = F.cross_entropy(logits.view(-1, self.vocab_size), targets.view(-1))
