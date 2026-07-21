@@ -38,45 +38,54 @@ class CausalSelfAttention(nn.Module):
         self.block_size = block_size
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """执行自注意力计算，返回与输入同形状的上下文特征。
-
-        参数:
-          x: 形状为 (B, T, C) 的输入特征张量。
-        返回:
-          形状为 (B, T, C) 的输出特征。
         """
+        执行自注意力计算，返回与输入同形状的上下文特征。
+        """    
+
         B, T, C = x.size()
-        q = self.w_q(x)
+        # 1. 投影（QKV）
+        q = self.w_q(x)  # (B, T, C)
         k = self.w_k(x)
         v = self.w_v(x)
-        # 拆分头数并转换形状为 (B, n_head, T, d_head)
-        q = q.view(B, T, self.n_head, self.d_head).transpose(1, 2)
+        
+        # 2. 拆头；转换形状为 (B, n_head, T, d_head)
+        q = q.view(B, T, self.n_head, self.d_head).transpose(1, 2)  # (B, nH, T, dH)
         k = k.view(B, T, self.n_head, self.d_head).transpose(1, 2)
         v = v.view(B, T, self.n_head, self.d_head).transpose(1, 2)
-        att = (q @ k.transpose(-2, -1)) * (1.0 / (self.d_head ** 0.5))
+        
+        # 3. 缩放点积
+        att = (q @ k.transpose(-2, -1)) * (1.0 / (self.d_head ** 0.5))  # (B, nH, T, T)
+        
+        # 4. 上三角掩码屏蔽未来位置，保证因果生成
         mask = torch.triu(torch.ones(T, T, device=x.device), diagonal=1).bool()
-        # 使用上三角掩码屏蔽未来位置，保证因果生成
         att = att.masked_fill(mask[None, None, :, :], float('-inf'))
+
+        # 5. softmax + dropout
         att = F.softmax(att, dim=-1)
         att = self.dropout(att)
-        y = att @ v
+
+        # 6. 加权V
+        y = att @ v  # (B, nH, T, dH)
+
+        # 7. 合并头
         y = y.transpose(1, 2).contiguous().view(B, T, C)
+
+        # 8. 输出投影
         y = self.w_o(y)
         return y
 
 class FeedForward(nn.Module):
     """Transformer 中的前馈网络子层。
-
     使用两层线性网络与 GELU 激活，以增强模型的非线性表达能力。
     """
 
     def __init__(self, d_model: int, d_ff: int, dropout: float) -> None:
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(d_model, d_ff),
-            nn.GELU(),
+            nn.Linear(d_model, d_ff),       # 升维
+            nn.GELU(),                      # 激活函数
             nn.Dropout(dropout),
-            nn.Linear(d_ff, d_model),
+            nn.Linear(d_ff, d_model),       # 降维
             nn.Dropout(dropout),
         )
 
